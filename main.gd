@@ -1,19 +1,16 @@
 extends Control
 
-const IrcClient = preload("res://irc/IrcClient.gd")
-const StringUtils = preload("res://irc/StringUtils.gd")
-
 # The URL we will connect to
 # export var irc_url = "irc.dot.org.es"
-export var server = "irc.dot.org.es"
-export var irc_url = "ircs://irc.dot.org.es:6697"
-export var websocket_url = "wss://irc.dot.org.es:7669"
-export var channel = "#romanian"
-export(bool) var debug = true
-export var nick = "godot"
+@export var server = "irc.dot.org.es"
+@export var irc_url = "ircs://irc.dot.org.es:6697"
+@export var websocket_url = "wss://irc.dot.org.es:7669"
+@export var channel = "#romanian"
+@export var debug: bool = true
+@export var nick = "godot"
 
-onready var tab_container = $TabContainer
-onready var text_edit = $TextEdit
+@onready var tab_container = $TabContainer
+@onready var text_edit = $TextEdit
 var client: IrcClient
 var buffers: Dictionary
 var currentchannel: String
@@ -50,7 +47,7 @@ const CMD_HELP = {
 	Commands.MSG: "Usage: /msg <nick> <message>",
 	Commands.QUIT: "Usage: /quit <message>",
 	Commands.OP: "Usage: /op <nick>",
-	Commands.LIST: "Usage: /names [channel]",
+	Commands.NAMES: "Usage: /names [channel]",
 	Commands.QUOTE: "Usage: /quote <raw_irc_command>",
 	Commands.LIST: "List channels in the server. Usage: /list [opt]",
 }
@@ -59,11 +56,10 @@ const CMD_HELP = {
 func _ready():
 	client = IrcClient.new(nick, nick, irc_url, websocket_url, channel)
 	client.debug = debug
-	var _n
-	_n = client.connect("connected", self, "_connected")
-	_n = client.connect("closed", self, "_closed")
-	_n = client.connect("error", self, "_error")
-	_n = client.connect("event", self, "_on_event")
+	client.comm_connected.connect(_connected)
+	client.closed.connect(_closed)
+	client.error.connect(_error)
+	client.event.connect(_on_event)
 	add_child(client)
 
 	text_edit.grab_focus()
@@ -154,9 +150,9 @@ func help(cmd, suffix = ""):
 
 
 # Given a prefix will find if there is any or multiple corresponding commands with that prefix
-func find_commands_from_prefix(prefix: String) -> PoolStringArray:
+func find_commands_from_prefix(prefix: String) -> PackedStringArray:
 	prefix = prefix.to_upper()
-	var can_be = PoolStringArray()
+	var can_be = PackedStringArray()
 	for cmd in Commands.keys():
 		if not cmd.to_upper().begins_with(prefix):
 			continue
@@ -167,10 +163,10 @@ func find_commands_from_prefix(prefix: String) -> PoolStringArray:
 func _command(text):
 	var whitespace_split = text.split(" ")
 	var command = whitespace_split[0].trim_prefix(command_prefix)
-	var args = PoolStringArray()
+	var args = PackedStringArray()
 
 	if len(whitespace_split) > 1:
-		args = text.trim_prefix(command_prefix + command + " ").split(" ")
+		args = whitespace_split.slice(1)
 
 	var arglen = len(args)
 	command = command.to_upper()
@@ -239,18 +235,18 @@ func _command(text):
 
 
 func _on_Send_pressed():
-	for text in text_edit.text.split(""):
-		if len(text) <= 0:
-			continue
+	var text: String = text_edit.text
+	if text.is_empty():
+		return
 
-		# If is command
-		if text.begins_with(command_prefix):
-			_command(text)
-			continue
+	# If is command
+	if text.begins_with(command_prefix):
+		_command(text)
+		return
 
-		# Send message to current channel
-		client.send(currentchannel, text)
-		buffers[currentchannel].add_message(text, nick)
+	# Send message to current channel
+	client.send(currentchannel, text)
+	buffers[currentchannel].add_message(text, nick)
 
 	text_edit.text = ""
 	buffers[currentchannel].scroll_to_bottom()
@@ -267,17 +263,17 @@ func add_text(text, channelname = null):
 		buffers[server].add_message(text)
 
 
-func create_buffer(channel):
-	var buffer = preload("res://Buffer.tscn").instance()
-	buffer.channel = channel
-	buffers[channel] = buffer
-	buffer.set_name(channel)
+func create_buffer(_channel):
+	var buffer = preload("res://Buffer.tscn").instantiate()
+	buffer.channel = _channel
+	buffers[_channel] = buffer
+	buffer.set_name(_channel)
 	tab_container.add_child(buffer)
 	tab_container.set_current_tab(len(tab_container.get_children()) - 1)
 
 
-func delete_buffer(channel):
-	tab_container.remove_child(buffers[channel])
+func delete_buffer(_channel):
+	tab_container.remove_child(buffers[_channel])
 	tab_container.set_current_tab(len(tab_container.get_children()) - 1)
 	var current_buffer = tab_container.get_current_tab_control()
 	if current_buffer:
@@ -293,5 +289,5 @@ func _on_TabContainer_tab_changed(tab):
 # Ctrl + W Closes the current tab
 func _unhandled_input(event):
 	if event is InputEventKey:
-		if event.pressed and event.control and event.scancode == KEY_W:
+		if event.pressed and event.ctrl_pressed and event.keycode == KEY_W:
 			delete_buffer(currentchannel)

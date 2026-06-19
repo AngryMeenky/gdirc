@@ -1,4 +1,5 @@
 extends Object
+class_name StringUtils
 
 
 # Join an array from strings starting from the given start_index

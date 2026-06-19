@@ -1,8 +1,8 @@
 extends Control
 var channel
 var nicks = {}
-onready var scroll_container = $ScrollContainer
-onready var scroll = $ScrollContainer/VBoxContainer
+@onready var scroll_container = $ScrollContainer
+@onready var scroll = $ScrollContainer/VBoxContainer
 
 var is_scrolled_up = false
 
@@ -68,7 +68,7 @@ var color_map = {
 
 
 func _ready():
-	scroll_container.get_v_scrollbar().connect("value_changed", self, "on_scroll")
+	scroll_container.get_v_scroll_bar().connect("value_changed", Callable(self, "on_scroll"))
 
 
 func add_nicks(nicknames):
@@ -192,11 +192,11 @@ func _parse_irc_text(text):
 func add_message(text, nick = null, color = null):
 	var label = RichTextLabel.new()
 	label.bbcode_enabled = true
-	label.fit_content_height = true
+	label.fit_content = true
 	label.scroll_active = false
 	label.size_flags_horizontal = SIZE_EXPAND_FILL
 	label.size_flags_vertical = SIZE_EXPAND_FILL
-	label.rect_min_size.x = get_parent().get_size().x
+	label.custom_minimum_size.x = get_parent().get_size().x
 	label.selection_enabled = true
 
 	var _text = ""
@@ -215,26 +215,25 @@ func add_message(text, nick = null, color = null):
 		_text += _parse_irc_text(text)
 
 	if color == null:
-		for nick in nicks:
+		for _nick in nicks:
 			var regex = RegEx.new()
-			regex.compile("\\b" + nick + "\\b")
-			_text = regex.sub(_text, "[color=" + nicks[nick] + "]" + nick + "[/color]", true)
+			regex.compile("\\b" + _nick + "\\b")
+			_text = regex.sub(_text, "[color=" + nicks[_nick] + "]" + _nick + "[/color]", true)
 
 	_text = prefix + _text
-	label.bbcode_text = _text
+	label.text = _text
 	print("----------------------------------------")
 	print(_text)
 	scroll.add_child(label)
 
 
 func _max_scrollbar_value():
-	return scroll_container.get_v_scrollbar().max_value
+	return scroll_container.get_v_scroll_bar().max_value
 
 
 func scroll_to_bottom():
 	if is_scrolled_up:
 		return
-	yield(get_tree(), "idle_frame")
 	scroll_container.scroll_vertical = _max_scrollbar_value()
 
 

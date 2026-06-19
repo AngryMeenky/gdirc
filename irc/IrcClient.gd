@@ -1,12 +1,8 @@
 # REFERENCE: https://modern.ircdocs.horse/
 
 extends Node
+class_name IrcClient
 
-const WSBackend = preload("res://irc/WSBackend.gd")
-const TCPBackend = preload("res://irc/TCPBackend.gd")
-const TCPSBackend = preload("res://irc/TCPSBackend.gd")
-
-const StringUtils = preload("res://irc/StringUtils.gd")
 
 enum Proto {
 	WS,
@@ -47,17 +43,17 @@ var debug: bool = false
 # Either WSBackend ot TCPBackend
 var backend
 
-signal connected
-signal error(message)
-signal event(_event)
-signal closed
+signal comm_connected()
+signal error(message: String)
+signal event(_event: Event)
+signal closed()
 
 var init = false
 
 
 class Event:
 	var source = ""
-	var list = PoolStringArray()
+	var list = PackedStringArray()
 	var message = ""
 	var nick = ""
 	var topic = ""
@@ -72,6 +68,36 @@ class Event:
 			push_error("Event requires source.")
 		for key in attrs:
 			set(key, attrs[key])
+
+	static func make_privmsg(src: String, chan: String, from: String, msg: String) -> Event:
+		return Event.new({ "source": src, "type": PRIVMSG, "channel": chan, "nick": from, "message": msg})
+
+	static func make_ctcp(src: String, cmd: int, chan: String, from: String, data: String) -> Event:
+		return Event.new({ "source": src, "type": cmd, "channel": chan, "nick": from, "message": data})
+
+	static func make_mode(src: String, chan: String, _mode: String) -> Event:
+		return Event.new({ "source": src, "type": MODE, "channel": chan, "mode": _mode})
+
+	static func make_kick(src: String, chan: String, who: String, msg: String) -> Event:
+		return Event.new({ "source": src, "type": KICK, "channel": chan, "nick": who, "message": msg})
+
+	static func make_quit(src: String, chan: String) -> Event:
+		return Event.new({ "source": src, "type": QUIT, "channel": chan})
+
+	static func make_join(src: String, chan: String) -> Event:
+		return Event.new({ "source": src, "type": JOIN, "channel": chan})
+
+	static func make_nick(src: String, _nick: String) -> Event:
+		return Event.new({ "source": src, "type": NICK, "nick": _nick})
+
+	static func make_part(src: String, chan: String) -> Event:
+		return Event.new({ "source": src, "type": PART, "channel": chan})
+
+	static func make_topic(src: String, chan: String, who: String, msg: String) -> Event:
+		return Event.new({ "source": src, "type": TOPIC, "channel": chan, "nick": who, "message": msg})
+
+	static func make_list(src: String, chan: String, _list: PackedStringArray) -> Event:
+		return Event.new({ "source": src, "type": LIST, "channel": chan, "list": _list})
 
 
 class Accumulator:
@@ -111,7 +137,7 @@ func get_type(var_name: String) -> int:
 # _nick: Client irc nickname
 # _username: Client irc username
 #
-# _host: Can be a webscoket address or irc address. The protoccol must be specified example with default ports:
+# _host: Can be a websocket address or irc address. The protoccol must be specified example with default ports:
 # irc://irc.example.com:6667
 # ircs://irc.example.com:6697
 # ws://irc.example.com:7666
@@ -181,35 +207,35 @@ func _init(
 	# Create backend
 	match proto:
 		Proto.TCP:
-			backend = TCPBackend.new()
+			backend = TcpBackend.new()
 			backend.connect_to_host(host, port)
 
 		Proto.TCPS:
-			backend = TCPSBackend.new()
+			backend = TcpsBackend.new()
 			backend.connect_to_host(host, port)
 
 		Proto.WS:
-			backend = WSBackend.new()
+			backend = WsBackend.new()
 			backend.host_uri = "ws://" + host + ":" + str(port)
 
 		Proto.WSS:
-			backend = WSBackend.new()
+			backend = WsBackend.new()
 			backend.host_uri = "wss://" + host + ":" + str(port)
 
 	# Bind and Connect
-	backend.connect("closed", self, "_closed")
-	backend.connect("data_received", self, "_data")
-	backend.connect("error", self, "_error")
-	backend.connect("connected", self, "_connected")
+	backend.closed.connect(_closed)
+	backend.data_received.connect(_data)
+	backend.error.connect(_error)
+	backend.comm_connected.connect(_connected)
 	add_child(backend)
 
 
 func _closed():
-	emit_signal("closed")
+	closed.emit()
 
 
 func _error(err):
-	emit_signal("error", err)
+	error.emit(err)
 
 
 func _connected():
@@ -217,7 +243,7 @@ func _connected():
 		return
 	quote("nick " + nick)
 	quote("user " + username + " * * :" + username)
-	emit_signal("connected")
+	comm_connected.emit()
 	connected = true
 
 
@@ -278,7 +304,7 @@ func emit_events(msg):
 		var from_nick = source.split("!")[0]
 		var long_param = ""
 		var has_long_param = false
-		for arg in Array(args).slice(1, len(args) - 1):
+		for arg in Array(args).slice(1):
 			if not has_long_param and arg.begins_with(":"):
 				has_long_param = true
 				long_param += arg.trim_prefix(":")
@@ -304,122 +330,42 @@ func emit_events(msg):
 				if has_ctcp:
 					match ctcp_type:
 						ACTION:
-							emit_signal(
-								"event",
-								Event.new(
-									{
-										"source": source,
-										"type": ctcp_type,
-										"channel": channel,
-										"nick": from_nick,
-										"message": ctcp_command.trim_prefix(ctcp_args[0] + " ")
-									}
-								)
-							)
+							event.emit(Event.make_ctcp(
+								source, ctcp_type, channel, from_nick, ctcp_command.trim_prefix(ctcp_args[0] + " ")
+							))
 				else:
-					emit_signal(
-						"event",
-						Event.new(
-							{
-								"source": source,
-								"type": evtype,
-								"channel": channel,
-								"nick": from_nick,
-								"message": long_param
-							}
-						)
-					)
+					event.emit(Event.make_privmsg(source, channel, from_nick, long_param))
 			MODE:
-				emit_signal(
-					"event",
-					Event.new(
-						{"source": source, "mode": args[3], "type": evtype, "channel": args[2]}
-					)
-				)
+				event.emit(Event.make_mode(source, args[2], args[3]))
 			KICK:
-				emit_signal(
-					"event",
-					Event.new(
-						{
-							"source": source,
-							"type": evtype,
-							"nick": args[3],
-							"channel": args[2],
-							"message": long_param
-						}
-					)
-				)
+				event.emit(Event.make_kick(source, args[2], args[3], long_param))
 			QUIT:
-				emit_signal(
-					"event", Event.new({"source": source, "type": evtype, "channel": long_param})
-				)
+				event.emit(Event.make_quit(source, long_param))
 			JOIN:
-				emit_signal(
-					"event", Event.new({"source": source, "type": evtype, "channel": long_param})
-				)
+				event.emit(Event.make_join(source, long_param))
 			NICK:
-				emit_signal(
-					"event", Event.new({"source": source, "type": evtype, "nick": long_param})
-				)
+				event.emit(Event.make_nick(source, long_param))
 			PART:
-				emit_signal(
-					"event", Event.new({"source": source, "type": evtype, "channel": long_param})
-				)
+				event.emit(Event.make_part(source, long_param))
 			TOPIC:
-				emit_signal(
-					"event",
-					Event.new(
-						{
-							"source": source,
-							"type": evtype,
-							"nick": from_nick,
-							"channel": args[2],
-							"message": long_param,
-						}
-					)
-				)
+				event.emit(Event.make_topic(source, args[2], args[3], long_param))
 
 			_:
 				match reply_code:
 					"433":
-						emit_signal("event", Event.new({"source": source, "type": NICK_IN_USE}))
+						event.emit(Event.new({"source": source, "type": NICK_IN_USE}))
 
 					"353":
 						var channel = msg.split(":")[1].split(" ")[4]
-						var names = long_param.split(" ")
-						emit_signal(
-							"event",
-							Event.new(
-								{"source": source, "type": NAMES, "channel": channel, "list": names}
-							)
-						)
+						var _names = long_param.split(" ")
+						event.emit(Event.make_list(source, channel, _names))
 
 					"332":
-						emit_signal(
-							"event",
-							Event.new(
-								{
-									"source": source,
-									"type": TOPIC,
-									"nick": "",
-									"channel": args[3],
-									"message": long_param,
-								}
-							)
-						)
+						event.emit(Event.make_topic(source, args[3], "", long_param))
 
 					# Unpriviledged ERR
 					"482":
-						emit_signal(
-							"event",
-							Event.new(
-								{
-									"source": source,
-									"type": ERR_CHANPRIVSNEEDED,
-									"message": long_param,
-								}
-							)
-						)
+						event.emit(Event.new({"source": source, "type": ERR_CHANPRIVSNEEDED, "message": long_param }))
 
 					# LIST
 					"321":
@@ -430,16 +376,7 @@ func emit_events(msg):
 						accumulator.add(LIST, StringUtils.join_from(args, 3))
 
 					"323":
-						emit_signal(
-							"event",
-							Event.new(
-								{
-									"source": source,
-									"type": LIST,
-									"list": accumulator.pop(LIST),
-								}
-							)
-						)
+						event.emit(Event.make_list(source, "", accumulator.pop(LIST)))
 
 	# Nick in use at login
 	elif reply_code == "433":
@@ -485,8 +422,8 @@ func quit(message: String):
 
 # Changes the mode for a specific channel
 # TODO Capture the result with the "MODE" event
-func mode(channel: String, mode: String, _nick: String):
-	quote("MODE %s %s %s" % [channel, mode, _nick])
+func mode(channel: String, _mode: String, _nick: String):
+	quote("MODE %s %s %s" % [channel, _mode, _nick])
 
 
 # Kicks a user from a channel with a message
@@ -497,8 +434,8 @@ func kick(channel: String, _nick: String, message = ""):
 
 # Changes the topic of a channel
 # Capture the result with the "JOIN" event
-func topic(channel: String, topic: String):
-	quote("TOPIC %s :%s" % [channel, topic])
+func topic(channel: String, _topic: String):
+	quote("TOPIC %s :%s" % [channel, _topic])
 
 
 # Gets a list of names from the current channel
