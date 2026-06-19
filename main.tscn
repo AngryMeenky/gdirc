@@ -12,10 +12,6 @@ grow_horizontal = 2
 grow_vertical = 2
 theme = ExtResource("2")
 script = ExtResource("1")
-server = "irc.example.net"
-irc_url = "irc://10.0.0.4:6667"
-websocket_url = ""
-channel = "#bots"
 
 [node name="RichTextLabel" type="RichTextLabel" parent="."]
 layout_mode = 0
