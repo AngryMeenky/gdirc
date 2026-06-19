@@ -1,11 +1,10 @@
 extends Control
 
 # The URL we will connect to
-# export var irc_url = "irc.dot.org.es"
-@export var server = "irc.dot.org.es"
-@export var irc_url = "ircs://irc.dot.org.es:6697"
-@export var websocket_url = "wss://irc.dot.org.es:7669"
-@export var channel = "#romanian"
+@export var server = "irc.example.local"
+@export var irc_url = "ircs://irc.example.local:6697"
+@export var websocket_url = "wss://irc.example.local:7669"
+@export var channel = "#godot"
 @export var debug: bool = true
 @export var nick = "godot"
 
