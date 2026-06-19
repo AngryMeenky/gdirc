@@ -25,7 +25,7 @@ If you are looking for a irc server I recommend [Unrealircd](https://www.unreali
 
 ## How to use this as a library
 
-Simply copy the [irc/](https://github.com/AngryMeenky/gdirc/tree/master/addons/gdirc) folder into your project's addons and initialize it like:
+Simply copy the [addons/gdirc/](https://github.com/AngryMeenky/gdirc/tree/master/addons/gdirc) folder into your project's addons and initialize it like:
 
 ``` gdscript
 var client: IrcClient
