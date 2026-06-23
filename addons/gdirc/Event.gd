@@ -1,8 +1,13 @@
 extends RefCounted
 class_name IrcEvent
 
+
+const _CTCP_ESC := "\u0001"
+
+
 static var SRC_REGEX := RegEx.create_from_string("(?<nick>[^!]+)(?<user>![^@]+)?(?<host>@.+)?")
 static var TAG_REGEX := RegEx.create_from_string("(?<key>[^=]+)(?<value>=[^\\r\\n; ])?")
+static var _EMPTY: PackedStringArray = []
 static var _MAPPING := {
 	"CAP":      IRC.Commands.CAP,      "AUTHENTICATE": IRC.Commands.AUTHENTICATE,
 	"PASS":     IRC.Commands.PASS,     "NICK":         IRC.Commands.NICK,
@@ -33,24 +38,25 @@ static var _FINALIZERS := {
 	IRC.Commands.PING:         _text_only_finalizer,
 	IRC.Commands.PONG:         _text_last_finalizer,
 	IRC.Commands.OPER:         _simple_finalizer,
-	IRC.Commands.QUIT:         _optional_text_finalizer,
+	IRC.Commands.QUIT:         _targeted_simple_with_optional_text_finalizer,
 	IRC.Commands.ERROR:        _optional_text_finalizer,
-	IRC.Commands.PART:         _simple_with_optional_text_finalizer,
-	IRC.Commands.TOPIC:        _simple_with_optional_text_finalizer,
+	IRC.Commands.JOIN:         _simple_finalizer,
+	IRC.Commands.PART:         _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.TOPIC:        _targeted_simple_with_optional_text_finalizer,
 	IRC.Commands.NAMES:        _simple_finalizer,
 	IRC.Commands.LIST:         _simple_finalizer,
 	IRC.Commands.INVITE:       _simple_finalizer,
-	IRC.Commands.KICK:         _simple_with_optional_text_finalizer,
-	IRC.Commands.MOTD:         _simple_finalizer,
-	IRC.Commands.VERSION:      _simple_finalizer,
-	IRC.Commands.ADMIN:        _simple_finalizer,
+	IRC.Commands.KICK:         _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.MOTD:         _targeted_simple_finalizer,
+	IRC.Commands.VERSION:      _targeted_simple_finalizer,
+	IRC.Commands.ADMIN:        _targeted_simple_finalizer,
 	IRC.Commands.CONNECT:      _simple_finalizer,
 	IRC.Commands.LUSERS:       _bare_finalizer,
-	IRC.Commands.TIME:         _simple_finalizer,
+	IRC.Commands.TIME:         _targeted_simple_finalizer,
 	IRC.Commands.STATS:        _simple_finalizer,
 	IRC.Commands.HELP:         _simple_with_optional_text_finalizer,
 	IRC.Commands.INFO:         _bare_finalizer,
-	IRC.Commands.MODE:         _simple_finalizer,
+	IRC.Commands.MODE:         _targeted_simple_finalizer,
 	IRC.Commands.PRIVMSG:      _privmsg_finalizer,
 	IRC.Commands.NOTICE:       _privmsg_finalizer,
 	IRC.Commands.WHO:          _simple_finalizer,
@@ -65,143 +71,143 @@ static var _FINALIZERS := {
 	IRC.Commands.USERHOST:     _simple_finalizer,
 	IRC.Commands.WALLOPS:      _text_only_finalizer,
 
-	IRC.Commands.RPL_WELCOME:  _text_only_finalizer,
-	IRC.Commands.RPL_YOURHOST: _text_only_finalizer,
-	IRC.Commands.RPL_CREATED:  _text_only_finalizer,
-	IRC.Commands.RPL_MYINFO:   _simple_finalizer,
-	IRC.Commands.RPL_ISUPPORT: _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_BOUNCE:   _simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WELCOME:  _targeted_text_only_finalizer,
+	IRC.Commands.RPL_YOURHOST: _targeted_text_only_finalizer,
+	IRC.Commands.RPL_CREATED:  _targeted_text_only_finalizer,
+	IRC.Commands.RPL_MYINFO:   _targeted_simple_finalizer,
+	IRC.Commands.RPL_ISUPPORT: _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_BOUNCE:   _targeted_simple_with_optional_text_finalizer,
 
-	IRC.Commands.RPL_STATSCOMMANDS: _simple_finalizer,
-	IRC.Commands.RPL_ENDOFSTATS:    _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_UMODEIS:       _simple_finalizer,
-	IRC.Commands.RPL_STATSUPTIME:   _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_STATSCONN:     _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_LUSERCLIENT:   _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_LUSEROP:       _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_LUSERUNKNOWN:  _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_LUSERCHANNELS: _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_LUSERME:       _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ADMINME:       _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ADMINLOC1:     _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ADMINLOC2:     _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ADMINEMAIL:    _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_TRYAGAIN:      _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_LOCALUSERS:    _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_GLOBALUSERS:   _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOISCERTFP:   _simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_STATSCOMMANDS: _targeted_simple_finalizer,
+	IRC.Commands.RPL_ENDOFSTATS:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_UMODEIS:       _targeted_simple_finalizer,
+	IRC.Commands.RPL_STATSUPTIME:   _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_STATSCONN:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_LUSERCLIENT:   _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_LUSEROP:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_LUSERUNKNOWN:  _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_LUSERCHANNELS: _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_LUSERME:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ADMINME:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ADMINLOC1:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ADMINLOC2:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ADMINEMAIL:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_TRYAGAIN:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_LOCALUSERS:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_GLOBALUSERS:   _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOISCERTFP:   _targeted_simple_with_optional_text_finalizer,
 
-	IRC.Commands.RPL_AWAY:            _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_USERHOST:        _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_UNAWAY:          _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_NOWAWAY:         _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOISREGNICK:    _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOISUSER:       _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOISSERVER:     _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOISOPERATOR:   _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOWASUSER:      _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ENDOFWHO:        _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOISIDLE:       _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ENDOFWHOIS:      _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOISCHANNELS:   _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOISSPECIAL:    _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_LISTSTART:       _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_LIST:            _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_LISTEND:         _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_CHANNELMODEIS:   _simple_finalizer,
-	IRC.Commands.RPL_CREATIONTIME:    _simple_finalizer,
-	IRC.Commands.RPL_WHOISACCOUNT:    _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_NOTOPIC:         _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_TOPIC:           _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_TOPICWHOTIME:    _simple_finalizer,
-	IRC.Commands.RPL_INVITELIST:      _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ENDOFINVITELIST: _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOISACTUALLY:   _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_INVITING:        _simple_finalizer,
-	IRC.Commands.RPL_INVEXLIST:       _simple_finalizer,
-	IRC.Commands.RPL_ENDOFINVEXLIST:  _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_EXCEPTLIST:      _simple_finalizer,
-	IRC.Commands.RPL_ENDOFEXCEPTLIST: _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_VERSION:         _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOREPLY:        _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_NAMREPLY:        _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_LINKS:           _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ENDOFLINKS:      _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ENDOFNAMES:      _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_BANLIST:         _simple_finalizer,
-	IRC.Commands.RPL_ENDOFBANLIST:    _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ENDOFWHOWAS:     _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_INFO:            _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_MOTD:            _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ENDOFINFO:       _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_MOTDSTART:       _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ENDOFMOTD:       _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOISHOST:       _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOISMODES:      _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_YOUREOPER:       _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_REHASHING:       _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_TIME:            _simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_AWAY:            _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_USERHOST:        _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_UNAWAY:          _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_NOWAWAY:         _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOISREGNICK:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOISUSER:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOISSERVER:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOISOPERATOR:   _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOWASUSER:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ENDOFWHO:        _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOISIDLE:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ENDOFWHOIS:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOISCHANNELS:   _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOISSPECIAL:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_LISTSTART:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_LIST:            _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_LISTEND:         _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_CHANNELMODEIS:   _targeted_simple_finalizer,
+	IRC.Commands.RPL_CREATIONTIME:    _targeted_simple_finalizer,
+	IRC.Commands.RPL_WHOISACCOUNT:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_NOTOPIC:         _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_TOPIC:           _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_TOPICWHOTIME:    _targeted_simple_finalizer,
+	IRC.Commands.RPL_INVITELIST:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ENDOFINVITELIST: _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOISACTUALLY:   _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_INVITING:        _targeted_simple_finalizer,
+	IRC.Commands.RPL_INVEXLIST:       _targeted_simple_finalizer,
+	IRC.Commands.RPL_ENDOFINVEXLIST:  _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_EXCEPTLIST:      _targeted_simple_finalizer,
+	IRC.Commands.RPL_ENDOFEXCEPTLIST: _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_VERSION:         _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOREPLY:        _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_NAMREPLY:        _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_LINKS:           _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ENDOFLINKS:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ENDOFNAMES:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_BANLIST:         _targeted_simple_finalizer,
+	IRC.Commands.RPL_ENDOFBANLIST:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ENDOFWHOWAS:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_INFO:            _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_MOTD:            _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ENDOFINFO:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_MOTDSTART:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ENDOFMOTD:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOISHOST:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOISMODES:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_YOUREOPER:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_REHASHING:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_TIME:            _targeted_simple_with_optional_text_finalizer,
 
-	IRC.Commands.ERR_UNKNOWNERROR:      _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NOSUCHNICK:        _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NOSUCHSERVER:      _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NOSUCHCHANNEL:     _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_CANNOTSENDTOCHAN:  _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_TOOMANYCHANNELS:   _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_WASNOSUCHNICK:     _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NOORIGIN:          _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NORECIPIENT:       _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NOTEXTTOSEND:      _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_INPUTTOOLONG:      _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_UNKNOWNCOMMAND:    _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NOMOTD:            _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NONICKNAMEGIVEN:   _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_ERRONEUSNICKNAME:  _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NICKNAMEINUSE:     _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NICKCOLLISION:     _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_USERNOTINCHANNEL:  _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NOTONCHANNEL:      _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_USERONCHANNEL:     _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NOTREGISTERED:     _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NEEDMOREPARAMS:    _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_ALREADYREGISTERED: _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_PASSWDMISMATCH:    _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_YOUREBANNEDCREEP:  _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_CHANNELISFULL:     _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_UNKNOWNMODE:       _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_INVITEONLYCHAN:    _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_BANNEDFROMCHAN:    _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_BADCHANNELKEY:     _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_BADCHANMASK:       _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NOPRIVILEGES:      _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_CHANOPRIVSNEEDED:  _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_CANTKILLSERVER:    _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NOOPERHOST:        _simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_UNKNOWNERROR:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NOSUCHNICK:        _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NOSUCHSERVER:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NOSUCHCHANNEL:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_CANNOTSENDTOCHAN:  _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_TOOMANYCHANNELS:   _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_WASNOSUCHNICK:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NOORIGIN:          _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NORECIPIENT:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NOTEXTTOSEND:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_INPUTTOOLONG:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_UNKNOWNCOMMAND:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NOMOTD:            _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NONICKNAMEGIVEN:   _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_ERRONEUSNICKNAME:  _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NICKNAMEINUSE:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NICKCOLLISION:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_USERNOTINCHANNEL:  _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NOTONCHANNEL:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_USERONCHANNEL:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NOTREGISTERED:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NEEDMOREPARAMS:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_ALREADYREGISTERED: _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_PASSWDMISMATCH:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_YOUREBANNEDCREEP:  _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_CHANNELISFULL:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_UNKNOWNMODE:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_INVITEONLYCHAN:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_BANNEDFROMCHAN:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_BADCHANNELKEY:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_BADCHANMASK:       _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NOPRIVILEGES:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_CHANOPRIVSNEEDED:  _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_CANTKILLSERVER:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NOOPERHOST:        _targeted_simple_with_optional_text_finalizer,
 
-	IRC.Commands.ERR_UMODEUNKNOWNFLAG: _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_USERSDONTMATCH:   _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_HELPNOTFOUND:     _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_INVALIDKEY:       _simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_UMODEUNKNOWNFLAG: _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_USERSDONTMATCH:   _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_HELPNOTFOUND:     _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_INVALIDKEY:       _targeted_simple_with_optional_text_finalizer,
 
-	IRC.Commands.RPL_STARTTLS:         _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_WHOISSECURE:      _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_STARTTLS:         _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_INVALIDMODEPARAM: _simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_STARTTLS:         _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_WHOISSECURE:      _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_STARTTLS:         _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_INVALIDMODEPARAM: _targeted_simple_with_optional_text_finalizer,
 
-	IRC.Commands.RPL_HELPSTART: _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_HELPTXT:   _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_ENDOFHELP: _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NOPRIVS:   _simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_HELPSTART: _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_HELPTXT:   _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_ENDOFHELP: _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NOPRIVS:   _targeted_simple_with_optional_text_finalizer,
 
-	IRC.Commands.RPL_LOGGEDIN:    _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_LOGGEDOUT:   _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_NICKLOCKED:  _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_SASLSUCCESS: _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_SASLFAIL:    _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_SASLTOOLONG: _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_SASLABORTED: _simple_with_optional_text_finalizer,
-	IRC.Commands.ERR_SASLALREADY: _simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_SASLMECHS:   _simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_LOGGEDIN:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_LOGGEDOUT:   _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_NICKLOCKED:  _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_SASLSUCCESS: _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_SASLFAIL:    _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_SASLTOOLONG: _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_SASLABORTED: _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.ERR_SASLALREADY: _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_SASLMECHS:   _targeted_simple_with_optional_text_finalizer,
 }
 
 var ordinal := 0 
@@ -223,8 +229,8 @@ func _init(tag_str: String, src: String, cmd: String, arg_list: PackedStringArra
 	sub_cmds = subs
 
 	# handle CTCP
-	if args.size() == 2 and args[1].begins_with(IRC.CTCP_ESC) and (cmd == "NOTICE" or cmd == "PRIVMSG"):
-		for part: String in args[1].split(IRC.CTCP_ESC, false):
+	if args.size() == 2 and args[1].begins_with(_CTCP_ESC) and (cmd == "NOTICE" or cmd == "PRIVMSG"):
+		for part: String in args[1].split(_CTCP_ESC, false):
 			if part.begins_with("CLIENTINFO") or part.begins_with("DCC"):
 				ctcp.append(part.split(" ", false))
 			else:
@@ -247,6 +253,21 @@ func get_text() -> String:
 	return parsed.get(&"text", "")
 
 
+func get_target() -> String:
+	return parsed.get(&"target", "")
+
+
+func get_arg_count() -> int:
+	return parsed.get(&"positional", _EMPTY).size()
+
+
+func get_arg(idx: int) -> String:
+	var args: PackedStringArray = parsed.get(&"positional", _EMPTY)
+	if args.size() > idx:
+		return args[idx]
+	return ""
+
+
 func _parse_source(raw: String) -> Dictionary:
 	var result := {}
 	if not raw.is_empty():
@@ -259,7 +280,7 @@ func _parse_source(raw: String) -> Dictionary:
 			result["user"] = part.substr(1)
 		part = parts.get_string("nick")
 		if not part.is_empty():
-			result[ "server" if part.contains(".") else "nick"] = part
+			result[ "server" if part.contains(".") else "nick"] = part.substr(1)
 
 	return result
 
@@ -305,7 +326,26 @@ static func _bare_finalizer(event: IrcEvent) -> void:
 static func _text_only_finalizer(event: IrcEvent) -> void:
 	event.valid = not event.args.is_empty()
 	if event.valid:
-		event.parsed[&"text"] = event.args[1] if event.args[0] == ":" else event.args[0]
+		match event.args.size():
+			1:
+				event.parsed[&"text"] = event.args[0]
+			_:
+				var idx := event.args.size() - 2
+				if event.args[idx] == ":":
+					event.parsed[&"text"] = event.args[idx + 1]
+				else:
+					event.parsed[&"text"] = ""
+
+
+static func _targeted_text_only_finalizer(event: IrcEvent) -> void:
+	var idx := event.args.size() - 2
+	event.valid = idx >= 0
+	if event.valid:
+		event.parsed[&"target"] = event.args[0]
+		if idx == 0:
+			event.parsed[&"text"] = event.args[1]
+		else:
+			event.parsed[&"text"] = event.args[idx + 1]
 
 
 static func _text_last_finalizer(event: IrcEvent) -> void:
@@ -314,8 +354,7 @@ static func _text_last_finalizer(event: IrcEvent) -> void:
 		match event.args.size():
 			1:
 				event.parsed[&"text"] = event.args[0]
-				var empty: PackedVector2Array = []
-				event.parsed[&"positional"] = empty
+				event.parsed[&"positional"] = _EMPTY
 			_:
 				var idx := event.args.size() - 2
 				if event.args[idx] == ":":
@@ -331,6 +370,14 @@ static func _text_last_finalizer(event: IrcEvent) -> void:
 
 static func _simple_finalizer(event: IrcEvent) -> void:
 	event.parsed[&"positional"] = event.args
+	event.valid = true
+
+
+static func _targeted_simple_finalizer(event: IrcEvent) -> void:
+	if not event.args.is_empty():
+		event.parsed[&"target"] = event.args[0]
+	if event.args.size() > 1:
+		event.parsed[&"positional"] = event.args.slice(1)
 	event.valid = true
 
 
@@ -363,12 +410,51 @@ static func _simple_with_optional_text_finalizer(event: IrcEvent) -> void:
 			event.parsed[&"positional"] = event.args
 		event.valid = true
 	else:
-		event.parsed[&"positional"] = event.args
 		event.valid = not event.args.is_empty()
+		event.parsed[&"positional"] = event.args
+
+
+static func _targeted_simple_with_optional_text_finalizer(event: IrcEvent) -> void:
+	var idx := event.args.size() - 2
+	if idx >= 0:
+		if event.args[idx] == ":":
+			event.parsed[&"text"] = event.args[idx + 1]
+			event.parsed[&"positional"] = event.args.slice(1, idx)
+		else:
+			event.parsed[&"text"] = ""
+			event.parsed[&"positional"] = event.args.slice(1, idx + (1 if event.args[idx + 1] == ":" else 2))
+		event.parsed[&"target"] = event.args[0]
+		event.valid = true
+	else:
+		event.valid = not event.args.is_empty()
+		if event.valid:
+			event.parsed[&"target"] = event.args[0]
+			event.parsed[&"positional"] = event.args.slice(1)
+		else:
+			event.parsed[&"positional"] = _EMPTY
 
 
 static func _privmsg_finalizer(event: IrcEvent) -> void:
 	if event.ctcp.is_empty():
-		_text_last_finalizer(event)
+		event.valid = not event.args.is_empty()
+		if event.valid:
+			match event.args.size():
+				1:
+					event.parsed[&"positional"] = _EMPTY
+				_:
+					var idx := event.args.size() - 2
+					if event.args[idx] == ":":
+						event.parsed[&"text"] = event.args[idx + 1]
+						event.parsed[&"positional"] = event.args.slice(1, idx)
+					elif event.args[idx + 1] == ":":
+						event.parsed[&"text"] = ""
+						event.parsed[&"positional"] = event.args.slice(1, idx + 1)
+					else:
+						event.parsed[&"text"] = event.args[idx + 1]
+						event.parsed[&"positional"] = event.args.slice(1, idx + 1)
+			event.parsed[&"target"] = event.args[0]
 	else:
-		event.valid = true
+		event.valid = not event.args.is_empty()
+		if event.valid:
+			event.parsed[&"target"] = event.args[0]
+			event.parsed[&"positional"] = event.args.slice(1)
