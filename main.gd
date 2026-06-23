@@ -1,16 +1,16 @@
 extends Control
 
+
 # The URL we will connect to
 @export var server = "irc.example.local"
-@export var irc_url = "ircs://irc.example.local:6697"
-@export var websocket_url = "wss://irc.example.local:7669"
+@export var url = "ircs://irc.example.local:6697"
 @export var channel = "#godot"
 @export var debug: bool = true
 @export var nick = "godot"
 
-@onready var tab_container = $TabContainer
-@onready var text_edit = $TextEdit
-var client: IrcClient
+@onready var tab_container := $TabContainer
+@onready var text_edit := $TextEdit
+@onready var client: IRC = $IRC
 var buffers: Dictionary
 var currentchannel: String
 
@@ -53,19 +53,17 @@ const CMD_HELP = {
 
 
 func _ready():
-	client = IrcClient.new(nick, nick, irc_url, websocket_url, channel)
+	client.nick = nick
+	client.user = nick
+	client.network = server
 	client.debug = debug
-	client.comm_connected.connect(_connected)
-	client.closed.connect(_closed)
-	client.error.connect(_error)
-	client.event.connect(_on_event)
-	add_child(client)
+	client.connect_to_server(url)
 
 	text_edit.grab_focus()
 	create_buffer(server)
 
 
-func _error(err):
+func _error(err: String):
 	print(err)
 
 
@@ -74,61 +72,72 @@ func _closed():
 
 
 func _connected():
-	print("GUI: irc connected")
+	print("GUI: comms channel connected")
 	buffers[server].add_message("CONNECTED...", null, "red")
 
 
-func _on_event(ev):
-	match ev.type:
-		client.MODE:
+func _on_established():
+	print("BACKEND: irc connected")
+
+
+func _on_event(ev: IRC.Event):
+	match ev.ordinal:
+		IRC.Commands.MODE:
 			add_text(
 				getnick(ev.source) + " has set mode " + ev.mode + " on channel " + ev.channel + "",
 				ev.channel
 			)
-		client.KICK:
+		IRC.Commands.KICK:
 			add_text(
 				getnick(ev.nick) + " was kicked by " + getnick(ev.source) + ": " + ev.message + "",
 				ev.channel
 			)
 			print(ev.channel)
-		client.QUIT:
+		IRC.Commands.QUIT:
 			add_text(getnick(ev.source) + " has quit.", ev.channel)
-		client.PRIVMSG:
-			buffers[ev.channel].add_message(ev.message, ev.nick)
-		client.PART:
+		IRC.Commands.PRIVMSG:
+			if ev.ctcp.is_empty():
+				buffers[ev.channel].add_message(ev.message, ev.nick)
+			else:
+				for ctcp: PackedStringArray in ev.ctcp:
+					if ctcp[0] == "ACTION":
+						add_text(ev.args[0] + " -> " + ev.get_source() + ": " + "*" + ev.args[2] + "*", ev.args[0])
+					pass
+		IRC.Commands.PART:
 			add_text(getnick(ev.source) + " has parted " + ev.channel + ".", ev.channel)
-		client.JOIN:
+		IRC.Commands.JOIN:
 			if getnick(ev.source) == nick:
 				create_buffer(ev.channel)
 			else:
 				add_text(getnick(ev.source) + " has joined.", ev.channel)
-		client.ACTION:
-			add_text(ev.channel + " -> " + ev.nick + ": " + "*" + ev.message + "*", ev.channel)
-		client.NAMES:
+		IRC.Commands.NAMES:
 			add_text("Users in channel: " + str(ev.list) + "", ev.channel)
 			if ev.channel in buffers:
 				buffers[ev.channel].add_nicks(ev.list)
-		client.NICK:
+		IRC.Commands.NICK:
 			if ev.source == client.nick:
 				add_text("You are now known as " + ev.nick + "", ev.channel)
 				nick = ev.nick
 			else:
 				add_text(ev.source.split("!")[0] + " is now known as " + ev.nick + "", ev.channel)
-		client.NICK_IN_USE:
+		IRC.Commands.ERR_NICKNAMEINUSE: # NICK_IN_USE
 			add_text("That nickname is already in use!", ev.channel)
-		client.TOPIC:
+		IRC.Commands.TOPIC:
 			var pre = ""
 			if ev.nick:
 				pre = "Topic set by " + ev.nick
 			else:
 				pre = "TOPIC"
 			add_text(pre + ': "' + ev.message + '"', ev.channel)
-		client.ERR_CHANPRIVSNEEDED:
+		IRC.Commands.ERR_CHANOPRIVSNEEDED: # ERR_CHANOPRIVSNEEDED
 			add_text(" -> Error: " + ev.message + "", ev.channel)
-		client.LIST:
+		IRC.Commands.LIST:
 			for chan in ev.list:
 				add_text(str(chan) + "")
 			add_text("")
+		_:
+			if ev.ordinal >= IRC.Commands.RPL_WELCOME:
+				add_text(ev.get_text())
 
 	buffers[currentchannel].scroll_to_bottom()
 
