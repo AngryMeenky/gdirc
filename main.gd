@@ -80,7 +80,7 @@ func _on_established():
 	print("BACKEND: irc connected")
 
 
-func _on_event(ev: IRC.Event):
+func _on_event(ev: IrcEvent):
 	match ev.ordinal:
 		IRC.Commands.MODE:
 			add_text(
