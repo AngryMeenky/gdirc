@@ -90,7 +90,6 @@ enum Commands {
 }
 
 
-const CTCP_ESC := "\u0001"
 const ENDL: PackedByteArray = [ 0x0D, 0x0A ]
 static var ADDR_REGEX := RegEx.create_from_string(
 	"(?<scheme>ircs?|wss?)://(?<host>[0-9.]+|[^:]+|\\[[:0-9A-Fa-f]+\\])(?<port>:\\d+)?"
@@ -128,7 +127,7 @@ func _ready() -> void:
 
 func _process(_delta):
 	if _wrapper.get_status() == Status.STATUS_CONNECTED:
-		# send any automatic responses
+		# send any automatic responses and queued messages
 		while _client.get_response_count() > 0:
 			var packet := _client.get_response()
 			if debug:
@@ -223,6 +222,95 @@ func connect_to_server(url: String) -> Error:
 		push_error("Unparsable uri: ", url)
 
 	return err
+
+
+# send a fully formed IRC message
+func send_raw(msg: String) -> void:
+	_client.queue_message(msg)
+
+
+# Sends a private message or a message to a channel
+func send_message(target: String, message: String) -> void:
+	_client.queue_message("PRIVMSG %s :%s\r\n" % [ target, message ])
+
+
+# Sends a notice to a user or channel
+func send_notice(target: String, message: String) -> void:
+	_client.queue_message("NOTICE %s :%s\r\n" % [ target, message ])
+
+
+# Changes the nick of the client
+func change_nick(nick: String) -> void:
+	_client.queue_message("NICK %s\r\n" % nick)
+
+
+# Joins a channel
+func join_channel(channel: String) -> void:
+	_client.queue_message("JOIN %s\r\n" % channel)
+
+
+# Leaves a channel
+func part_channel(channel: String) -> void:
+	_client.queue_message("PART %s\r\n" % channel)
+
+
+# Quits the irc server
+func quit_server(message: String) -> void:
+	_client.queue_message("QUIT %s\r\n" % message)
+
+
+# Changes the mode for a specific channel
+func change_mode(channel: String, mode: String, nick: String) -> void:
+	_client.queue_message("MODE %s %s %s\r\n" % [ channel, mode, nick ])
+
+
+# Kicks a user from a channel with a message
+func kick_user(channel: String, nick: String, msg = "") -> void:
+	if msg.is_empty():
+		_client.queue_message("KICK %s %s\r\n" % [ channel, nick ])
+	else:
+		_client.queue_message("KICK %s %s :%s\r\n" % [ channel, nick, msg ])
+
+
+# Changes the topic of a channel
+func change_topic(channel: String, topic: String) -> void:
+	_client.queue_message("TOPIC %s :%s\r\n" % [ channel, topic ])
+
+
+# Clear the topic of a channel
+func get_topic(channel: String) -> void:
+	_client.queue_message("TOPIC %s\r\n" % channel)
+
+
+# Gets a list of names from the current channel
+func list_names(channel: String) -> void:
+	_client.queue_message("NAMES %s\r\n" % channel)
+
+
+# Gets a list of channels in the server.
+# Can take a param like ">3" (more than 3 users) or "T<60" (topic change in less than 60 min ago)
+func list_channels(param: String = "") -> void:
+	_client.queue_message("LIST %s\r\n" % param)
+
+
+# Send a custom ctcp command private message
+func ctcp_request(target: String, command: String) -> void:
+	_client.queue_message("PRIVMSG %s :\u0001%s\u0001\r\n" % [ target, command ])
+
+
+# Respond to a ctcp command
+func ctcp_response(target: String, command: String) -> void:
+	_client.queue_message("NOTICE %s :\u0001%s\u0001\r\n" % [ target, command ])
+
+
+# /me action
+func me(target: String, message: String) -> void:
+	ctcp_request(target, "ACTION " + message)
+
+
+# send a DCC request
+func dcc(target: String, type: String, arg: String, host: String, port: int) -> void:
+	ctcp_request(target, "DCC %s %s %s %d" % [ type, arg, host, port ])
 
 
 func _on_error(err: String) -> void:
