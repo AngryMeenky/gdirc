@@ -109,6 +109,10 @@ func get_response() -> String:
 	return packet
 
 
+func queue_message(msg: String) -> void:
+	_queue.append(msg.strip_edges())
+
+
 func process(raw: String) -> IrcEvent:
 	# bail on empty string
 	if raw.is_empty():
@@ -133,7 +137,7 @@ func process(raw: String) -> IrcEvent:
 		else:
 			push_error("Unexpected CTCP in ", event.command)
 	elif "PING" == event.command and not event.args.is_empty():
-		_queue.append(":%s PONG %s" % event.args[0])
+		_queue.append("PONG %s\r\n" % event.args[0])
 	return event
 
 
@@ -160,6 +164,7 @@ func _negotiate(event: IrcEvent) -> void:
 			# wait for MOTD/NICKTAKEN
 			if event.ordinal == IRC.Commands.RPL_ENDOFMOTD or event.ordinal == IRC.Commands.RPL_WELCOME:
 				_state = Status.REGISTERED
+				conn_established.emit()
 				print("Negotiating complete")
 			elif event.ordinal == IRC.Commands.ERR_NICKNAMEINUSE:
 				_nick += "_"
@@ -284,6 +289,7 @@ static func _parse_simple_cmd(parts: RegExMatch, debug: bool) -> IrcEvent:
 		if args[idx].begins_with(":"):
 			args[idx] = args[idx].substr(1)
 			args.insert(idx, ":")
+		idx += 1
 
 	return IrcEvent.new(tags, src, cmd, args)
 
