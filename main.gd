@@ -5,7 +5,7 @@ extends Control
 @export var server = "irc.example.local"
 @export var url = "ircs://irc.example.local:6697"
 @export var channel = "#godot"
-@export var debug: bool = true
+@export var debug: bool = false
 @export var nick = "godot"
 
 @onready var tab_container := $TabContainer
@@ -77,58 +77,59 @@ func _connected():
 
 
 func _on_established():
-	print("BACKEND: irc connected")
+	if not channel.is_empty():
+		client.join_channel(channel)
 
 
 func _on_event(ev: IrcEvent):
 	match ev.ordinal:
 		IRC.Commands.MODE:
 			add_text(
-				getnick(ev.source) + " has set mode " + ev.mode + " on channel " + ev.channel + "",
-				ev.channel
+				ev.get_source() + " has set mode " + ev.mode + " on channel " + ev.get_target() + "",
+				ev.get_target()
 			)
 		IRC.Commands.KICK:
 			add_text(
-				getnick(ev.nick) + " was kicked by " + getnick(ev.source) + ": " + ev.message + "",
-				ev.channel
+				ev.get_arg(0) + " was kicked by " + ev.get_source() + ": " + ev.get_text() + "",
+				ev.get_target()
 			)
 			print(ev.channel)
 		IRC.Commands.QUIT:
-			add_text(getnick(ev.source) + " has quit.", ev.channel)
+			add_text(ev.get_source() + " has quit.", ev.get_target())
 		IRC.Commands.PRIVMSG:
 			if ev.ctcp.is_empty():
-				buffers[ev.channel].add_message(ev.message, ev.nick)
+				buffers[ev.get_target()].add_message(ev.get_text(), ev.get_source())
 			else:
 				for ctcp: PackedStringArray in ev.ctcp:
 					if ctcp[0] == "ACTION":
-						add_text(ev.args[0] + " -> " + ev.get_source() + ": " + "*" + ev.args[2] + "*", ev.args[0])
+						add_text(ev.get_target() + " -> " + ev.get_source() + ": " + "*" + ctcp[1] + "*", ev.get_target())
 					pass
 		IRC.Commands.PART:
-			add_text(getnick(ev.source) + " has parted " + ev.channel + ".", ev.channel)
+			add_text(ev.get_source() + " has parted " + ev.get_target() + ".", ev.get_target())
 		IRC.Commands.JOIN:
-			if getnick(ev.source) == nick:
-				create_buffer(ev.channel)
+			if ev.get_source() == nick:
+				create_buffer(ev.get_arg(ev.get_arg_count() - 1))
 			else:
-				add_text(getnick(ev.source) + " has joined.", ev.channel)
+				add_text(ev.get_source() + " has joined.", ev.get_target())
 		IRC.Commands.NAMES:
 			add_text("Users in channel: " + str(ev.list) + "", ev.channel)
 			if ev.channel in buffers:
-				buffers[ev.channel].add_nicks(ev.list)
+				buffers[ev.get_target()].add_nicks(ev.list)
 		IRC.Commands.NICK:
-			if ev.source == client.nick:
-				add_text("You are now known as " + ev.nick + "", ev.channel)
-				nick = ev.nick
+			if ev.get_source() == client.nick:
+				add_text("You are now known as " + ev.get_arg(0) + "", ev.get_target())
+				nick = ev.get_source()
 			else:
-				add_text(ev.source.split("!")[0] + " is now known as " + ev.nick + "", ev.channel)
+				add_text(ev.get_source() + " is now known as " + ev.nick + "", ev.get_target())
 		IRC.Commands.ERR_NICKNAMEINUSE: # NICK_IN_USE
-			add_text("That nickname is already in use!", ev.channel)
+			add_text("That nickname is already in use!", ev.get_target())
 		IRC.Commands.TOPIC:
 			var pre = ""
 			if ev.nick:
 				pre = "Topic set by " + ev.nick
 			else:
 				pre = "TOPIC"
-			add_text(pre + ': "' + ev.message + '"', ev.channel)
+			add_text(pre + ': "' + ev.get_text() + '"', ev.get_target())
 		IRC.Commands.ERR_CHANOPRIVSNEEDED: # ERR_CHANOPRIVSNEEDED
 			add_text(" -> Error: " + ev.message + "", ev.channel)
 		IRC.Commands.LIST:
@@ -197,46 +198,43 @@ func _command(text):
 				add_text(command_prefix + cmd + "")
 			add_text("")
 		Commands.KICK:
-			if arglen > 1:
-				client.kick(currentchannel, args[0], args[1])
-			else:
-				client.kick(currentchannel, args[0])
+			client.kick_user(currentchannel, args[0], args[1] if arglen > 1 else "")
 		Commands.MODE:
-			client.mode(currentchannel, args[1], nick)
+			client.change_mode(currentchannel, args[1], nick)
 		Commands.CLEAR:
 			buffers[currentchannel].clear()
 		Commands.QUOTE:
-			client.quote(StringUtils.join_from(args))
+			client.send_raw(StringUtils.join_from(args))
 		Commands.ME:
 			client.me(currentchannel, StringUtils.join_from(args))
 		Commands.PART:
-			client.part(currentchannel)
+			client.part_channel(currentchannel)
 			delete_buffer(currentchannel)
 		Commands.TOPIC:
 			match arglen:
 				0:
-					client.quote("TOPIC " + currentchannel)
+					client.clear_topic(currentchannel)
 				_:
-					client.topic(currentchannel, StringUtils.join_from(args))
+					client.change_topic(currentchannel, StringUtils.join_from(args))
 		Commands.NICK:
 			client.set_nick(args[0])
 		Commands.JOIN:
-			client.join(args[0])
+			client.join_channel(args[0])
 		Commands.MSG:
 			if arglen >= 2:
-				client.send(args[0], StringUtils.join_from(args, 1))
+				client.send_message(args[0], StringUtils.join_from(args, 1))
 			else:
 				help(command, "Invalid number of arguments    -   ")
 		Commands.QUIT:
-			client.quit(StringUtils.join_from(args))
+			client.quit_server(StringUtils.join_from(args))
 		Commands.OP:
 			match arglen:
 				1:
-					client.op(currentchannel, args[0])
+					client.change_mode(currentchannel, "+o", args[0])
 				_:
 					help(command, "Invalid number of arguments    -   ")
 		Commands.LIST:
-			client.list(StringUtils.join_from(args))
+			client.list_channels(StringUtils.join_from(args))
 
 		_:
 			add_text("Unrecognized command: /" + command + "")
@@ -253,7 +251,7 @@ func _on_Send_pressed():
 		return
 
 	# Send message to current channel
-	client.send(currentchannel, text)
+	client.send_message(currentchannel, text)
 	buffers[currentchannel].add_message(text, nick)
 
 	text_edit.text = ""
