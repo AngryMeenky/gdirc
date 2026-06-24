@@ -13,7 +13,8 @@ grow_horizontal = 2
 grow_vertical = 2
 theme = ExtResource("2")
 script = ExtResource("1")
-url = "irc://10.0.0.4:6667"
+url = "irc://127.0.0.1:6667"
+debug = true
 
 [node name="RichTextLabel" type="RichTextLabel" parent="."]
 layout_mode = 0
