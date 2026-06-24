@@ -28,15 +28,19 @@ If you are looking for a irc server I recommend [Unrealircd](https://www.unreali
 Simply copy the [addons/gdirc/](https://github.com/AngryMeenky/gdirc/tree/master/addons/gdirc) folder into your project's addons and initialize it like:
 
 ``` gdscript
-var client: IrcClient
+@onready var client := $IrcClient
+
 
 func _ready():
-   # You can still pass respectively a websocket url that will be used on html exports and a channel to login automatically
-	client = IrcClient.new("nickname", "username", "ircs://irc.myserver.com:6697")
-	client.debug = true
-	client.connected.connect(_connected)
-	client.event.connect(_on_event)
-   
+  client.nick = "nick"
+  client.user = "username"
+  client.debug = true
+	client.conn_established.connect(_connected)
+	client.irc_event.connect(_on_event)
+  # You can still pass respectively a websocket url that will be used on html exports
+  client.connect_to_server("irc://irc.example.local:6667")
+
+
 func _connected():
    client.join("#channel")
    
@@ -44,33 +48,27 @@ func _connected():
 func _on_event(ev):
    # The event (ev) object can contain the attributes: 'message', 'list, 'nick', 'topic', 'channel'...
    # depending of the type. It is guaranteed to always have the 'type' and 'source' attributes
-	match ev.type:
+	match ev.ordinal:
 		client.PRIVMSG:
-		 # Do something with ev.message and ev.channel
+		 # Do something with ev.get_text() and ev.get_target() or ev.ctcp
 			pass
-		client.PART:
-		 # Do something with ev.channel
+		IRC.Commands.PART:
+		 # Do something with ev.get_target()
 			pass
-		client.JOIN:
-		 # Do something with ev.channel
+		IRC.Commands.JOIN:
+		 # Do something with ev.get_target()
 			pass
-		client.ACTION:
-		 # Do something with ev.message and ev.channel
+		IRC.Commands.NICK:
+		 # Do something with ev.get_arg(0)
 			pass
-		client.NAMES:
-		 # Do something with ev.list and ev.channel
+		IRC.Commands.NICK_IN_USE:
+		 # Do something with ev.get_arg(0)
 			pass
-		client.NICK:
-		 # Do something with ev.nick
+		IRC.Commands.TOPIC:
+		 # Do something with ev.get_text() and ev.get_target()
 			pass
-		client.NICK_IN_USE:
-		 # Do something with ev.nick
-			pass
-		client.TOPIC:
-		 # Do something with ev.topic and ev.channel
-			pass
-		client.KICK:
-		 # Do something with ev.nick and ev.channel and ev.source might be also relevant on this case.
+		IRC.Commands.KICK:
+		 # Do something with ev.get_arg(0) and ev.get_target() and ev.get_source() might be also relevant on this case.
 			pass
 		 
 	  # And there is more....
@@ -115,5 +113,6 @@ func _on_event(ev):
 	- [x] Irc Color support (?)
 	- [ ] Image preview for urls (?)
 
-- [ ] Turn this into a configurable and reusable godot plugin/add on/lib with options
+- [x] Turn this into a configurable and reusable godot plugin/add on/lib with options
 	- [ ] Single channel (only one tab)
+
