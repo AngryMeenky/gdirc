@@ -130,7 +130,7 @@ static var _FINALIZERS := {
 	IRC.Commands.RPL_ENDOFEXCEPTLIST: _targeted_simple_with_optional_text_finalizer,
 	IRC.Commands.RPL_VERSION:         _targeted_simple_with_optional_text_finalizer,
 	IRC.Commands.RPL_WHOREPLY:        _targeted_simple_with_optional_text_finalizer,
-	IRC.Commands.RPL_NAMREPLY:        _targeted_simple_with_optional_text_finalizer,
+	IRC.Commands.RPL_NAMREPLY:        _name_reply_finalizer,
 	IRC.Commands.RPL_LINKS:           _targeted_simple_with_optional_text_finalizer,
 	IRC.Commands.RPL_ENDOFLINKS:      _targeted_simple_with_optional_text_finalizer,
 	IRC.Commands.RPL_ENDOFNAMES:      _targeted_simple_with_optional_text_finalizer,
@@ -266,6 +266,10 @@ func get_arg(idx: int) -> String:
 	if args.size() > idx:
 		return args[idx]
 	return ""
+
+
+func get_list() -> PackedStringArray:
+	return parsed.get(&"list", _EMPTY)
 
 
 func _parse_source(raw: String) -> Dictionary:
@@ -432,6 +436,25 @@ static func _targeted_simple_with_optional_text_finalizer(event: IrcEvent) -> vo
 			event.parsed[&"positional"] = event.args.slice(1)
 		else:
 			event.parsed[&"positional"] = _EMPTY
+
+
+static func _name_reply_finalizer(event: IrcEvent) -> void:
+	var idx := event.args.size()
+	match idx:
+		4:
+			event.parsed[&"text"] = event.args[3]
+			event.parsed[&"target"] = event.args[0]
+			event.parsed[&"positional"] = event.args.slice(1, 3)
+			event.parsed[&"list"] = event.args[3].split(" ", false)
+			event.valid = true
+		5:
+			event.parsed[&"text"] = event.args[4]
+			event.parsed[&"target"] = event.args[0]
+			event.parsed[&"positional"] = event.args.slice(1, 3)
+			event.parsed[&"list"] = event.args[4].split(" ", false)
+			event.valid = true
+		_:
+			event.valid = false
 
 
 static func _privmsg_finalizer(event: IrcEvent) -> void:
