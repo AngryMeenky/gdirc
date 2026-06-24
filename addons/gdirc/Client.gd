@@ -130,18 +130,23 @@ func process(raw: String) -> IrcEvent:
 	if _state != Status.REGISTERED:
 		_negotiate(event)
 	elif not event.ctcp.is_empty():
-		if "PRIVMSG" == event.command:
+		if event.oridnal == IRC.Commands.PRIVMSG:
 			_handle_ctcp_request(event)
-		elif "NOTICE" == event.command:
+		elif event.oridnal == IRC.Commands.NOTICE:
 			_handle_ctcp_response(event)
 		else:
 			push_error("Unexpected CTCP in ", event.command)
-	elif "PING" == event.command and not event.args.is_empty():
-		_queue.append("PONG %s\r\n" % event.args[0])
+	elif event.oridnal == IRC.Commands.PING and not event.args.is_empty():
+		_queue.append("PONG :%s\r\n" % event.args[-1])
 	return event
 
 
 func _negotiate(event: IrcEvent) -> void:
+	# UnrealIRCd requires a PONG before finishing registration
+	if event.oridnal == IRC.Commands.PING and not event.args.is_empty():
+		_queue.append("PONG :%s\r\n" % event.args[-1])
+		return
+
 	match _state:
 		Status.UNREGISTERED:
 			if event.ordinal == IRC.Commands.CAP:
