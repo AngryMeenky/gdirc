@@ -93,7 +93,7 @@ func _on_event(ev: IrcEvent):
 				ev.get_arg(0) + " was kicked by " + ev.get_source() + ": " + ev.get_text() + "",
 				ev.get_target()
 			)
-			print(ev.channel)
+			print(ev.get_target())
 		IRC.Commands.QUIT:
 			add_text(ev.get_source() + " has quit.", ev.get_target())
 		IRC.Commands.PRIVMSG:
@@ -111,31 +111,29 @@ func _on_event(ev: IrcEvent):
 				create_buffer(ev.get_arg(ev.get_arg_count() - 1))
 			else:
 				add_text(ev.get_source() + " has joined.", ev.get_target())
-		IRC.Commands.NAMES:
-			add_text("Users in channel: " + str(ev.list) + "", ev.channel)
-			if ev.channel in buffers:
-				buffers[ev.get_target()].add_nicks(ev.list)
+		IRC.Commands.RPL_NAMREPLY:
+			add_text("Users in channel: " + " ".join(ev.get_list()) + "", ev.get_arg(1))
+			if ev.get_arg(1) in buffers:
+				buffers[ev.get_arg(1)].add_nicks(ev.get_list())
 		IRC.Commands.NICK:
 			if ev.get_source() == client.nick:
 				add_text("You are now known as " + ev.get_arg(0) + "", ev.get_target())
-				nick = ev.get_source()
+				nick = ev.get_arg(0)
 			else:
-				add_text(ev.get_source() + " is now known as " + ev.nick + "", ev.get_target())
+				add_text(ev.get_source() + " is now known as " + ev.get_arg(0) + "", ev.get_target())
 		IRC.Commands.ERR_NICKNAMEINUSE: # NICK_IN_USE
 			add_text("That nickname is already in use!", ev.get_target())
 		IRC.Commands.TOPIC:
 			var pre = ""
-			if ev.nick:
-				pre = "Topic set by " + ev.nick
-			else:
+			if ev.get_source().is_empty():
 				pre = "TOPIC"
+			else:
+				pre = "Topic set by " + ev.get_source()
 			add_text(pre + ': "' + ev.get_text() + '"', ev.get_target())
 		IRC.Commands.ERR_CHANOPRIVSNEEDED: # ERR_CHANOPRIVSNEEDED
-			add_text(" -> Error: " + ev.message + "", ev.channel)
-		IRC.Commands.LIST:
-			for chan in ev.list:
-				add_text(str(chan) + "")
-			add_text("")
+			add_text(" -> Error: " + ev.get_text() + "", ev.get_target())
+		IRC.Commands.RPL_LIST:
+			add_text("%s(%s): %s" % [ ev.get_arg(0), ev.get_arg(1), ev.get_text() ])
 		_:
 			if ev.ordinal >= IRC.Commands.RPL_WELCOME:
 				add_text(ev.get_text())
