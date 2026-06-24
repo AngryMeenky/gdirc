@@ -85,7 +85,7 @@ func _on_event(ev: IrcEvent):
 	match ev.ordinal:
 		IRC.Commands.MODE:
 			add_text(
-				ev.get_source() + " has set mode " + ev.mode + " on channel " + ev.get_target() + "",
+				ev.get_source() + " has set mode " + ev.args[-1] + " on channel " + ev.get_target() + "",
 				ev.get_target()
 			)
 		IRC.Commands.KICK:
