@@ -67,7 +67,7 @@ static func join_from(args: Array, start_index = 0) -> String:
 
 static func irc_to_format_list(line: String) -> Array[Array]:
 	var escapes := _find_all(line, _ESCAPES) # find all the escapes
-	var result := []
+	var result: Array[Array] = []
 
 	if escapes.is_empty():
 		result.append([ LITERAL, line ])

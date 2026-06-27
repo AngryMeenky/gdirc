@@ -22,50 +22,6 @@ const COLORS = [
 	"#ff0080",
 ]
 
-const ColorEscape = "\u0003"
-const ShiftIn = "\u000f"
-const BoldEscape = ""
-const ItalicEscape = ""
-const UnderlineEscape = ""
-
-
-class Colors:
-	const white = "00"
-	const black = "01"
-	const navy = "02"
-	const green = "03"
-	const red = "04"
-	const maroon = "05"
-	const purple = "06"
-	const orange = "07"
-	const yellow = "08"
-	const light_green = "09"
-	const teal = "10"
-	const cyan = "11"
-	const blue = "12"
-	const magenta = "13"
-	const gray = "14"
-	const light_gray = "15"
-
-var color_map = {
-	Colors.white: "#ffffff",
-	Colors.black: "#000000",
-	Colors.navy: "#00007f",
-	Colors.green: "#009300",
-	Colors.red: "#ff0000",
-	Colors.maroon: "#7f0000",
-	Colors.purple: "#9c009c",
-	Colors.orange: "#fc7f00",
-	Colors.yellow: "#ffff00",
-	Colors.light_green: "#00fc00",
-	Colors.teal: "#009393",
-	Colors.cyan: "#00ffff",
-	Colors.blue: "#0000fc",
-	Colors.magenta: "#ff00ff",
-	Colors.gray: "#7f7f7f",
-	Colors.light_gray: "#d2d2d2",
-	}
-
 
 func _ready():
 	scroll_container.get_v_scroll_bar().connect("value_changed", Callable(self, "on_scroll"))
@@ -78,115 +34,6 @@ func add_nicks(nicknames):
 				nickname = nickname.substr(1, nickname.length())
 				break
 		nicks[nickname] = COLORS[hash(nickname) % len(COLORS)]
-
-class ColorAndLength:
-	var color
-	var length
-
-	func _init(_color, _length):
-		self.color = _color
-		self.length = _length
-
-# Determines irc color code from 2 character strings
-func _irc_color(color: String) -> ColorAndLength:
-	var col = "#ffffff"
-	var length = 0
-	if color in color_map:
-		col = color_map[color]
-		length = 2
-	elif "0" + color[0] in color_map:
-		col = color_map["0" + color[0]]
-		length = 1
-	return ColorAndLength.new(col, length)
-
-
-
-# HACK bbcode is hacky, change this to use add_text, push_bold, push_color, etc...
-func _parse_irc_text(text):
-	var parsed = ""
-	var italic = false
-	var bold = false
-	var underline = false
-	var current_color = null
-	var background_color = null
-	var stack = []
-	var i = 0
-	while i < text.length():
-		var c = text[i]
-
-		match c:
-
-			BoldEscape:
-				if bold:
-					parsed += "[/b]"
-					stack.erase("[/b]")
-				else:
-					parsed += "[b]"
-					stack.append("[/b]")
-				bold = !bold
-
-			ItalicEscape:
-				if italic:
-					parsed += "[/i]"
-					stack.erase("[/i]")
-				else:
-					parsed += "[i]"
-					stack.append("[/i]")
-				italic = !italic
-
-			UnderlineEscape:
-				if underline:
-					parsed += "[/u]"
-					stack.erase("[/u]")
-				else:
-					parsed += "[u]"
-					stack.append("[/u]")
-				underline = !underline
-
-			ColorEscape, ShiftIn:
-				if background_color != null:
-					parsed += "[/bgcolor]"
-					stack.erase("[/bgcolor]")
-					background_color = null
-				elif current_color != null:
-					parsed += "[/color]"
-					stack.erase("[/color]")
-					current_color = null
-				else:
-					if text[i+1] == ",":
-						# Just background
-						var bgcolor = _irc_color(text.substr(i + 2, 2))
-						parsed += "[bgcolor=" + bgcolor.color + "]"
-						stack.append("[/bgcolor]")
-						background_color = bgcolor.color
-						i += bgcolor.length + 1
-
-					else:
-						# Foreground color
-						var color = _irc_color(text.substr(i + 1, 2))
-						parsed += "[color=" + color.color + "]"
-						current_color = color.color
-						stack.append("[/color]")
-						i += color.length
-
-						if text[i+1] == ",":
-							# Foreground and background
-							var bgcolor = _irc_color(text.substr(i + 2, 2))
-							parsed += "[bgcolor=" + bgcolor.color + "]"
-							stack.append("[/bgcolor]")
-							background_color = bgcolor.color
-							i += bgcolor.length + 1
-
-			_:
-				parsed += c
-
-		i += 1
-
-	# pop_back all remaining tags
-	while stack.size() > 0:
-		parsed += stack.pop_back()
-
-	return parsed
 
 
 func add_message(text, nick = null, color = null):
@@ -202,17 +49,13 @@ func add_message(text, nick = null, color = null):
 	var _text = ""
 	var prefix = ""
 
-	# Escape bbcode
-	text = text.replace("[", "[\u200b")
-	text = text.replace("]", "]\u200b")
-
 	if nick != null:  # choose color from hash
 		var _color = COLORS[hash(nick) % len(COLORS)]
 		prefix += "[color=%s][b]%s[/b][/color]: " % [_color, nick]
 	if color != null:
 		_text += "[color=" + color + "]" + text + "[/color]"
 	else:
-		_text += _parse_irc_text(text)
+		_text += StringUtils.irc_to_bbcode(text)
 
 	if color == null:
 		for _nick in nicks:
