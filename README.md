@@ -46,7 +46,7 @@ func _connected():
    
    
 func _on_event(ev):
-   # The event (ev) object can contain the attributes: 'message', 'list, 'nick', 'topic', 'channel'...
+   # The event (ev) object can contain the attributes: 'text', 'source, 'target'...
    # depending of the type. It is guaranteed to always have the 'type' and 'source' attributes
 	match ev.ordinal:
 		client.PRIVMSG:
@@ -61,7 +61,7 @@ func _on_event(ev):
 		IRC.Commands.NICK:
 		 # Do something with ev.get_arg(0)
 			pass
-		IRC.Commands.NICK_IN_USE:
+		IRC.Commands.ERR_NICKNAMEINUSE:
 		 # Do something with ev.get_arg(0)
 			pass
 		IRC.Commands.TOPIC:
