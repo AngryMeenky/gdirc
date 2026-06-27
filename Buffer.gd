@@ -8,6 +8,7 @@ signal message(target: String, text: String)
 @export var nick: String
 @export var channel: String
 @export var members: = {}
+@export var max_lines := 500
 @export var color_nicks := false
 @export var is_server := false:
 	set(val):
@@ -56,6 +57,10 @@ func add_message(text: String, who = null, color = null) -> void:
 
 	if debug:
 		print(channel + " -> " + prefix + _text)
+
+	# limit amount of text in the buffer
+	while _output.get_paragraph_count() >= max_lines:
+		_output.remove_paragraph(0)
 
 	_output.append_text(prefix + _text + "\r\n")
 

@@ -3,12 +3,12 @@
 
 # Godot irc client
 
-This is a fully features irc client for godot support non encrypted (commonly port tcp 6667) and ssl encrypted (commonly tcp 6697) connections. It also supports websockets (also both ws and wss) which is useful for web exports. If your irc server doesn't support websockets natively or with a module/plugin then check this [other project of mine](https://github.com/matheusfillipe/ws2irc).
+This is a fully features irc client for godot support non encrypted (commonly port tcp 6667) and ssl encrypted (commonly tcp 6697) connections. It also supports websockets (also both ws and wss) which is useful for web exports. If your irc server doesn't support websockets natively or with a module/plugin then check this [other project of matheusfillipe](https://github.com/matheusfillipe/ws2irc).
 
 **Attention** Currently this is not ensuring the validity of the ssl certificates for the irc over tcp backend.
 
 ## What is irc
-IRC is the Internet Relay Chat. It is one of the simplest, most awesome and also one of the oldest chatting protocols:
+IRC is the Internet Relay Chat. It is one of the simplest, most awesome, and also one of the oldest chatting protocols:
 
 > Internet Relay Chat (IRC) is a text-based chat system for instant messaging. IRC is designed for group communication in discussion forums, called channels, but also allows one-on-one communication... :: 
 
@@ -16,14 +16,11 @@ IRC is the Internet Relay Chat. It is one of the simplest, most awesome and also
 
 Take a look at [this link](https://datatracker.ietf.org/doc/html/rfc1459) to learn more about the protocol and what is supported.
 
-If you are looking for a irc server I recommend [Unrealircd](https://www.unrealircd.org/) which as a websocket module.
+If you are looking for a irc server I recommend [Unrealircd](https://www.unrealircd.org/) which has a websocket module.
 
-## How to use this as chat a plugin
+## How to use this as chat an addon
 
-**Work in progress**
-
-
-## How to use this as a library
+**Future Work**: Get the addon into the asset library
 
 Simply copy the [addons/gdirc/](https://github.com/AngryMeenky/gdirc/tree/master/addons/gdirc) folder into your project's addons and initialize it like:
 
@@ -105,7 +102,7 @@ func _on_event(ev):
    - [ ] Implement more? https://datatracker.ietf.org/doc/html/rfc1459
 
 - [x] Better UI
-	- [ ] Better RichTextLabel to display messages and unload old ones dynamically
+	- [x] Better RichTextLabel to display messages and unload old ones dynamically
 	- [x] Add close button to tabs, closing the tab leaves the channel
 	- [ ] Better ui for /help
 	- [x] Multiple tabs or windows, one per channel you join

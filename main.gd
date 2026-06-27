@@ -245,12 +245,12 @@ func add_text(text, channelname = null):
 		buffers[server].add_message(text)
 
 
-func create_buffer(_channel, server := false):
+func create_buffer(_channel, hide_members := false):
 	var buffer: = preload("res://Buffer.tscn").instantiate()
 	buffer.nick = nick
 	buffer.debug = debug
 	buffer.channel = _channel
-	buffer.is_server = server
+	buffer.is_server = hide_members
 	buffers[_channel] = buffer
 	buffer.name = _channel
 	buffer.message.connect(_on_message)
