@@ -1,4 +1,4 @@
-extends Control
+extends VBoxContainer
 
 
 # The URL we will connect to
@@ -9,7 +9,6 @@ extends Control
 @export var nick = "godot"
 
 @onready var tab_container := $TabContainer
-@onready var text_edit := $TextEdit
 @onready var client: IRC = $IRC
 var buffers: Dictionary
 var currentchannel: String
@@ -59,12 +58,12 @@ func _ready():
 	client.debug = debug
 	client.connect_to_server(url)
 
-	text_edit.grab_focus()
-	create_buffer(server)
+	tab_container.get_tab_bar().tab_close_pressed.connect(_tab_close_pressed)
+	create_buffer(server, true)
 
 
 func _error(err: String):
-	print(err)
+	printerr(err)
 
 
 func _closed():
@@ -105,7 +104,10 @@ func _on_event(ev: IrcEvent):
 						add_text(ev.get_target() + " -> " + ev.get_source() + ": " + "*" + ctcp[1] + "*", ev.get_target())
 					pass
 		IRC.Commands.PART:
-			add_text(ev.get_source() + " has parted " + ev.get_target() + ".", ev.get_target())
+			if ev.get_source() == nick:
+				delete_buffer(ev.get_target())
+			else:
+				add_text(ev.get_source() + " has parted " + ev.get_target() + ".", ev.get_target())
 		IRC.Commands.JOIN:
 			if ev.get_source() == nick:
 				create_buffer(ev.get_arg(ev.get_arg_count() - 1))
@@ -138,12 +140,6 @@ func _on_event(ev: IrcEvent):
 			if ev.ordinal >= IRC.Commands.RPL_WELCOME:
 				add_text(ev.get_text())
 
-	buffers[currentchannel].scroll_to_bottom()
-
-
-func _input(ev):
-	if ev.is_action_pressed("send"):
-		_on_Send_pressed()
 
 
 func help(cmd, suffix = ""):
@@ -238,24 +234,6 @@ func _command(text):
 			add_text("Unrecognized command: /" + command + "")
 
 
-func _on_Send_pressed():
-	var text: String = text_edit.text
-	if text.is_empty():
-		return
-
-	# If is command
-	if text.begins_with(command_prefix):
-		_command(text)
-		return
-
-	# Send message to current channel
-	client.send_message(currentchannel, text)
-	buffers[currentchannel].add_message(text, nick)
-
-	text_edit.text = ""
-	buffers[currentchannel].scroll_to_bottom()
-
-
 func getnick(source):
 	return source.split("!")[0]
 
@@ -267,11 +245,15 @@ func add_text(text, channelname = null):
 		buffers[server].add_message(text)
 
 
-func create_buffer(_channel):
-	var buffer = preload("res://Buffer.tscn").instantiate()
+func create_buffer(_channel, server := false):
+	var buffer: = preload("res://Buffer.tscn").instantiate()
+	buffer.nick = nick
+	buffer.debug = debug
 	buffer.channel = _channel
+	buffer.is_server = server
 	buffers[_channel] = buffer
-	buffer.set_name(_channel)
+	buffer.name = _channel
+	buffer.message.connect(_on_message)
 	tab_container.add_child(buffer)
 	tab_container.set_current_tab(len(tab_container.get_children()) - 1)
 
@@ -279,7 +261,7 @@ func create_buffer(_channel):
 func delete_buffer(_channel):
 	tab_container.remove_child(buffers[_channel])
 	tab_container.set_current_tab(len(tab_container.get_children()) - 1)
-	var current_buffer = tab_container.get_current_tab_control()
+	var current_buffer := tab_container.get_current_tab_control() as IrcBuffer
 	if current_buffer:
 		currentchannel = current_buffer.channel
 	else:
@@ -287,8 +269,23 @@ func delete_buffer(_channel):
 		tab_container.set_current_tab(0)
 
 
-func _on_TabContainer_tab_changed(tab):
+func _on_message(target: String, text: String) -> void:
+	# Is this a command
+	if text.begins_with(command_prefix):
+		_command(text)
+		return
+
+	client.send_message(target, text)
+
+
+func _on_TabContainer_tab_changed(tab: int):
 	currentchannel = tab_container.get_tab_control(tab).channel
+	tab_container.get_tab_bar().tab_close_display_policy = TabBar.CLOSE_BUTTON_SHOW_ACTIVE_ONLY if tab != 0 else TabBar.CLOSE_BUTTON_SHOW_NEVER
+
+
+func _tab_close_pressed(tab: int) -> void:
+	client.part_channel(tab_container.get_tab_control(tab).name)
+
 
 # Ctrl + W Closes the current tab
 func _unhandled_input(event):
