@@ -275,6 +275,7 @@ func get_list() -> PackedStringArray:
 func _parse_source(raw: String) -> Dictionary:
 	var result := {}
 	if not raw.is_empty():
+		result[":raw"] = raw
 		var parts := SRC_REGEX.search(raw)
 		var part := parts.get_string("host")
 		if not part.is_empty():
@@ -292,6 +293,7 @@ func _parse_source(raw: String) -> Dictionary:
 func _parse_tags(raw: String) -> Dictionary:
 	var result := {}
 	if not raw.is_empty():
+		result["@raw"] = raw
 		for tag: String in raw.split(";", false):
 			var parts := TAG_REGEX.search(tag)
 			var val := parts.get_string("value")
