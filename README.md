@@ -105,10 +105,10 @@ func _on_event(ev):
    - [ ] Implement more? https://datatracker.ietf.org/doc/html/rfc1459
 
 - [x] Better UI
-	- [x] Better listview to display messages and unload old ones dynamically
-	- [ ] Add close button to tabs
+	- [ ] Better RichTextLabel to display messages and unload old ones dynamically
+	- [x] Add close button to tabs, closing the tab leaves the channel
 	- [ ] Better ui for /help
-	- [x] Multiple tabs or windows per channel you join
+	- [x] Multiple tabs or windows, one per channel you join
 	- [ ] Highlight and make urls clickable
 	- [x] Irc Color support (?)
 	- [ ] Image preview for urls (?)
