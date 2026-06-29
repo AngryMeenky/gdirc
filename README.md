@@ -18,13 +18,14 @@ Take a look at [this link](https://datatracker.ietf.org/doc/html/rfc1459) to lea
 
 If you are looking for a IRC server I recommend [Unrealircd](https://www.unrealircd.org/) which has a websocket module.
 
-## How to use this as chat an addon
+## How to use this as a chat addon
 
 **Future Work**: Get the addon into the asset library
 
 Simply copy the [addons/gdirc/](https://github.com/AngryMeenky/gdirc/tree/master/addons/gdirc) folder into your project's addons and initialize it like:
 
 ``` gdscript
+# The IRC node MUST be placed in the scene tree for proper operation
 @onready var client := $IrcClient
 
 
@@ -34,8 +35,10 @@ func _ready():
 	client.debug = true
 	client.conn_established.connect(_connected)
 	client.irc_event.connect(_on_event)
-	# You can still pass respectively a websocket url that will be used on html exports
+	# You can also pass a websocket url that should be used on html exports
 	client.connect_to_server("irc://irc.example.local:6667")
+	# a StreamPeerTCP, StreamPeerTLS, or WebsocketPeer can be passed directly to set_connection
+	#client.set_connection(peer)
 
 
 func _connected():
@@ -94,8 +97,9 @@ func _on_event(ev):
 	- [x] tcp ssl backend
 
 - [x] IRC client that accepts one of the backends
+	- [x] Emits a signal on every parsable IRC message, prints an error on unparasable IRC messages
 	- [x] Emits signal on completed registration with IRC server
-	- [X] Allows custom handling of capability negotiation via a provided callable
+	- [X] Allows custom handling of capability negotiation via a provided [https://docs.godotengine.org/en/stable/classes/class_callable.html](Callable)
 
 - [x] IRC protocol parsing/handling and commands
 	- [x] Actions (emote), other's join, other's part
