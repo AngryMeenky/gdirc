@@ -1,13 +1,13 @@
 ### Work in progress
 
 
-# Godot irc client
+# Godot IRC client
 
-This is a fully features irc client for godot support non encrypted (commonly port tcp 6667) and ssl encrypted (commonly tcp 6697) connections. It also supports websockets (also both ws and wss) which is useful for web exports. If your irc server doesn't support websockets natively or with a module/plugin then check this [other project of matheusfillipe](https://github.com/matheusfillipe/ws2irc).
+This is a fully features IRC client for godot support non encrypted (commonly port tcp 6667) and ssl encrypted (commonly tcp 6697) connections. It also supports websockets (also both ws and wss) which is useful for web exports. If your irc server doesn't support websockets natively or with a module/plugin then check this [other project of matheusfillipe](https://github.com/matheusfillipe/ws2irc).
 
-**Attention** Currently this is not ensuring the validity of the ssl certificates for the irc over tcp backend.
+**Attention** Currently this is not ensuring the validity of the ssl certificates for the IRC server over tcp backend.
 
-## What is irc
+## What is IRC
 IRC is the Internet Relay Chat. It is one of the simplest, most awesome, and also one of the oldest chatting protocols:
 
 > Internet Relay Chat (IRC) is a text-based chat system for instant messaging. IRC is designed for group communication in discussion forums, called channels, but also allows one-on-one communication... :: 
@@ -16,7 +16,7 @@ IRC is the Internet Relay Chat. It is one of the simplest, most awesome, and als
 
 Take a look at [this link](https://datatracker.ietf.org/doc/html/rfc1459) to learn more about the protocol and what is supported.
 
-If you are looking for a irc server I recommend [Unrealircd](https://www.unrealircd.org/) which has a websocket module.
+If you are looking for a IRC server I recommend [Unrealircd](https://www.unrealircd.org/) which has a websocket module.
 
 ## How to use this as chat an addon
 
@@ -46,7 +46,7 @@ func _on_event(ev):
 	# The event (ev) object can contain the attributes: 'text', 'source, 'target'...
 	# depending of the type. It is guaranteed to always have the 'type' and 'source' attributes
 	match ev.ordinal:
-		client.PRIVMSG:
+		IRC.Commands.PRIVMSG:
 			# Do something with ev.get_text() and ev.get_target() or ev.ctcp
 			pass
 		IRC.Commands.PART:
@@ -80,7 +80,7 @@ func _on_event(ev):
 
 - Nice tutorial for tcp in godot: [https://www.bytesnsprites.com/posts/2021/creating-a-tcp-client-in-godot/](https://www.bytesnsprites.com/posts/2021/creating-a-tcp-client-in-godot/)
 
-- Simple irc client in javascript: [https://github.com/matheusfillipe/irc.js/blob/master/irc.js](https://github.com/matheusfillipe/irc.js/blob/master/irc.js)
+- Simple IRC client in javascript: [https://github.com/matheusfillipe/irc.js/blob/master/irc.js](https://github.com/matheusfillipe/irc.js/blob/master/irc.js)
 
 - IRC reference: [https://modern.ircdocs.horse/](https://modern.ircdocs.horse/)
 
@@ -88,18 +88,20 @@ func _on_event(ev):
 
 # TODO
 
-- [x] Separated irc backends that implement send, emit signal on message, basic text decoding
+- [x] Separated IRC backends that implement send, basic text decoding, and emit signals on state changes
 	- [x] websocket backend
 	- [x] tcp backend
 	- [x] tcp ssl backend
 
-- [x] irc client that accepts one of the backends 
+- [x] IRC client that accepts one of the backends
+	- [x] Emits signal on completed registration with IRC server
+	- [X] Allows custom handling of capability negotiation via a provided callable
 
-- [x] Irc protocol parsing/handling and commands
+- [x] IRC protocol parsing/handling and commands
 	- [x] Actions (emote), other's join, other's part
 	- [x] topic, mode, other users nick change and mode change, user kicked, banned
 	- [ ] Implement more? https://datatracker.ietf.org/doc/html/rfc1459
-	- [ ] Implement SASL for improved usser experience and security
+	- [ ] Implement SASL for improved user experience and security
 
 - [x] Better UI
 	- [x] Better RichTextLabel to display messages and unload old ones dynamically
@@ -107,9 +109,8 @@ func _on_event(ev):
 	- [ ] Better ui for /help
 	- [x] Multiple tabs or windows, one per channel you join
 	- [ ] Highlight and make urls clickable
-	- [x] Irc Color support (?)
+	- [x] IRC Color support
 	- [ ] Image preview for urls (?)
 
 - [x] Turn this into a configurable and reusable godot plugin/add on/lib with options
 	- [ ] Single channel (only one tab)
-
