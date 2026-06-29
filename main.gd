@@ -163,23 +163,23 @@ func find_commands_from_prefix(prefix: String) -> PackedStringArray:
 	return can_be
 
 
-func _command(text):
-	var whitespace_split = text.split(" ")
+func _command(text: String) -> void:
+	var whitespace_split := text.split(" ")
 	var command = whitespace_split[0].trim_prefix(command_prefix)
-	var args = PackedStringArray()
+	var args: PackedStringArray = []
 
-	if len(whitespace_split) > 1:
+	if whitespace_split.size() > 1:
 		args = whitespace_split.slice(1)
 
-	var arglen = len(args)
+	var arglen = args.size()
 	command = command.to_upper()
 
 	# Accept shortened prefixes for each command
 	var can_be = find_commands_from_prefix(command)
 	var cmd_id = -1
-	if len(can_be) == 1:
+	if can_be.size() == 1:
 		cmd_id = Commands.keys().find(can_be[0])
-	elif len(can_be) > 1:
+	elif can_be.size() > 1:
 		add_text(" -> /" + command + " could be multiple commands: " + str(can_be) + "")
 		return
 
@@ -198,9 +198,9 @@ func _command(text):
 		Commands.CLEAR:
 			buffers[currentchannel].clear()
 		Commands.QUOTE:
-			client.send_raw(StringUtils.join_from(args))
+			client.send_raw(" ".join(args))
 		Commands.ME:
-			client.me(currentchannel, StringUtils.join_from(args))
+			client.me(currentchannel," ".join(args))
 		Commands.PART:
 			client.part_channel(currentchannel)
 			delete_buffer(currentchannel)
@@ -209,18 +209,18 @@ func _command(text):
 				0:
 					client.clear_topic(currentchannel)
 				_:
-					client.change_topic(currentchannel, StringUtils.join_from(args))
+					client.change_topic(currentchannel, " ".join(args))
 		Commands.NICK:
 			client.set_nick(args[0])
 		Commands.JOIN:
 			client.join_channel(args[0])
 		Commands.MSG:
 			if arglen >= 2:
-				client.send_message(args[0], StringUtils.join_from(args, 1))
+				client.send_message(args[0], " ".join(args.slice(1)))
 			else:
 				help(command, "Invalid number of arguments    -   ")
 		Commands.QUIT:
-			client.quit_server(StringUtils.join_from(args))
+			client.quit_server(" ".join(args))
 		Commands.OP:
 			match arglen:
 				1:
@@ -228,14 +228,11 @@ func _command(text):
 				_:
 					help(command, "Invalid number of arguments    -   ")
 		Commands.LIST:
-			client.list_channels(StringUtils.join_from(args))
+			client.list_channels(" ".join(args))
 
 		_:
 			add_text("Unrecognized command: /" + command + "")
 
-
-func getnick(source):
-	return source.split("!")[0]
 
 
 func add_text(text, channelname = null):

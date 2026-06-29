@@ -12,7 +12,7 @@ grow_horizontal = 2
 grow_vertical = 2
 theme = ExtResource("2")
 script = ExtResource("1")
-url = "irc://127.0.0.1:6697"
+url = "irc://127.0.0.1:6667"
 debug = true
 
 [node name="TabContainer" type="TabContainer" parent="."]
