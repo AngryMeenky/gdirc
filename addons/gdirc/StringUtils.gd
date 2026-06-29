@@ -52,19 +52,6 @@ static var _CLR_REG := RegEx.create_from_string("\u0003(\\d{1,2}|\\d{1,2},\\d{1,
 static var _HEX_REG := RegEx.create_from_string("\u0003([[:xdigit:]]{6}|[[:xdigit:]]{6},[[:xdigit:]]{6})")
 
 
-# Join an array from strings starting from the given start_index
-static func join_from(args: Array, start_index = 0) -> String:
-	var string = ""
-	var i = -1
-
-	for word in args:
-		i += 1
-		if i < start_index:
-			continue
-		string += word + " "
-	return string
-
-
 static func irc_to_format_list(line: String) -> Array[Array]:
 	var escapes := _find_all(line, _ESCAPES) # find all the escapes
 	var result: Array[Array] = []
@@ -162,7 +149,7 @@ static func irc_to_format_list(line: String) -> Array[Array]:
 	return result
 
 
-static func _untangle(result: PackedStringArray, stack: Array[Array], cmd: int) -> void:
+static func _untangle_bbc(result: PackedStringArray, stack: Array[Array], cmd: int) -> void:
 	var min = -stack.size()
 	var idx = -1
 
@@ -225,7 +212,7 @@ static func _simple_tag(result: PackedStringArray, stack: Array[Array], cmd: Arr
 		result.append(close)
 		stack.pop_back()
 	else:
-		_untangle(result, stack, cmd[0])
+		_untangle_bbc(result, stack, cmd[0])
 
 
 static func formatting_to_bbcode(formatting: Array[Array]) -> String:
@@ -246,7 +233,7 @@ static func formatting_to_bbcode(formatting: Array[Array]) -> String:
 					else:
 						result.append("[color=#%s]" % cmd[1])
 				else:
-					_untangle(result, stack, COLOR)
+					_untangle_bbc(result, stack, COLOR)
 			HEX_COLOR:
 				if cmd.size() > 1:
 					stack.append(cmd)
@@ -255,7 +242,7 @@ static func formatting_to_bbcode(formatting: Array[Array]) -> String:
 					else:
 						result.append("[color=#%s]" % cmd[1])
 				else:
-					_untangle(result, stack, HEX_COLOR)
+					_untangle_bbc(result, stack, HEX_COLOR)
 			RESET:
 				pass
 			MONOSPACE:
