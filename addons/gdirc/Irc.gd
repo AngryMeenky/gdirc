@@ -90,7 +90,7 @@ enum Commands {
 }
 
 
-const ENDL: PackedByteArray = [ 0x0D, 0x0A ]
+const ENDL: PackedByteArray = [ 0x0D, 0x0A ] # "\r\n" in byte form
 static var ADDR_REGEX := RegEx.create_from_string(
 	"(?<scheme>ircs?|wss?)://(?<host>[0-9.]+|[^:]+|\\[[:0-9A-Fa-f]+\\])(?<port>:\\d+)?"
 )
@@ -143,6 +143,10 @@ func _process(_delta):
 		var event = _client.process(packet)
 		if event != null:
 			irc_event.emit(event)
+
+
+func set_capability_callback(callable: Callable) -> void:
+	_client.set_capability_callback(callable)
 
 
 func set_connection(conn) -> Error:

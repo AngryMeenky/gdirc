@@ -268,8 +268,27 @@ func get_arg(idx: int) -> String:
 	return ""
 
 
+func get_args() -> PackedStringArray:
+	return parsed.get(&"positional", _EMPTY)
+
+
 func get_list() -> PackedStringArray:
 	return parsed.get(&"list", _EMPTY)
+
+
+func get_cap_count() -> int:
+	return parsed.get(&"caps", _EMPTY).size()
+
+
+func get_cap(idx: int) -> String:
+	var args: PackedStringArray = parsed.get(&"caps", _EMPTY)
+	if args.size() > idx:
+		return args[idx]
+	return ""
+
+
+func get_caps() -> PackedStringArray:
+	return parsed.get(&"caps", _EMPTY)
 
 
 func _parse_source(raw: String) -> Dictionary:

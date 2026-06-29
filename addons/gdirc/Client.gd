@@ -70,8 +70,10 @@ var _password: String
 var _network: String
 var _queue: PackedStringArray = []
 var _caps := {}
+var _requested := 0
 var _state := Status.UNREGISTERED
 var _debug := false
+var _cap_filter: Callable
 var _wrapper
 
 
@@ -80,17 +82,26 @@ func _init(nick: String, user: String, password: String, network: String):
 	_user = user
 	_password = password
 	_network = network
+	_cap_filter = _noop_filter
 	reset()
 
 
 func reset() -> void:
 	_state = Status.UNREGISTERED
+	_requested = 0
 	_queue.clear()
 	_queue.append("CAP LS 302\r\n")
 	if not _password.is_empty():
 		_queue.append("PASS %s\r\n" % _password)
-	_queue.append("NICK %s" % _nick)
-	_queue.append("USER %s * * %s" % [ _user, _user ])
+	_queue.append("NICK %s\r\n" % _nick)
+	_queue.append("USER %s * * %s\r\n" % [ _user, _user ])
+
+
+func set_capability_callback(callable: Callable) -> void:
+	if callable.is_valid():
+		_cap_filter = callable
+	else:
+		_cap_filter = _noop_filter # must always be a valid callable
 
 
 func is_setup_complete() -> bool:
@@ -110,7 +121,7 @@ func get_response() -> String:
 
 
 func queue_message(msg: String) -> void:
-	_queue.append(msg.strip_edges())
+	_queue.append(msg.lstrip("\t "))
 
 
 func process(raw: String) -> IrcEvent:
@@ -142,60 +153,95 @@ func process(raw: String) -> IrcEvent:
 
 
 func _negotiate(event: IrcEvent) -> void:
-	# UnrealIRCd requires a PONG before finishing registration
 	if event.ordinal == IRC.Commands.PING and not event.args.is_empty():
+		# UnrealIRCd requires a PONG before finishing registration
 		_queue.append("PONG :%s\r\n" % event.args[-1])
+		return
+	elif event.ordinal == IRC.Commands.ERR_NICKNAMEINUSE:
+		# always handle NICK IN USE before registrationn completes
+		_nick += "_"
+		_queue.append("NICK %s\r\n" % _nick)
 		return
 
 	match _state:
 		Status.UNREGISTERED:
 			if event.ordinal == IRC.Commands.CAP:
-				var idx := event.args.size()
-				while idx > 0:
-					idx -= 1
-					_caps[event.args[idx]] = AVAILABLE
+				if event.sub_cmds.find("LS") >= 0:
+					var idx := event.args.size()
+					while idx > 0:
+						idx -= 1
+						_caps[event.args[idx]] = AVAILABLE
 
-				if event.sub_cmds[event.sub_cmds.size() - 1] == "LS":
-					# TODO: finish negotiation
-					_state = Status.IDENT_SENT
-					_queue.append("CAP END\r\n")
+					if event.sub_cmds[event.sub_cmds.size() - 1] == "LS":
+						# determine which capabilities are desired
+						_cap_filter.call(_caps)
+						var reqs: PackedStringArray = []
+						for cap in _caps.keys():
+							if _caps[cap] == REQUESTED:
+								reqs.append(cap)
+								if reqs.size() >= 10:
+									_queue.append("CAP REQ %s\r\n" % " ".join(reqs))
+									_requested += reqs.size()
+									reqs.clear()
+						if not reqs.is_empty():
+							_queue.append("CAP REQ %s\r\n" % " ".join(reqs))
+							_requested += reqs.size()
+
+						if _requested > 0:
+							_state = Status.CAP_INIT
+						else:
+							# skip waiting for ACKs/NAKs if none were requested
+							_state = Status.IDENT_SENT
+							_queue.append("CAP END\r\n")
 		Status.CAP_INIT:
-			if event.ordinal == IRC.Commands.ERR_NICKNAMEINUSE:
-				_nick += "_"
-				_queue.append("NICK %s" % _nick)
-			# TODO wait for all ACKs/NAKs
-			_state = Status.IDENT_SENT
+			# wait for all ACKs/NAKs
+			if event.ordinal == IRC.Commands.CAP:
+				if event.sub_cmds.find("ACK") >= 0:
+					for cap in event.get_caps():
+						_caps[cap] = ENABLED
+					_requested -= event.get_cap_count()
+				elif event.sub_cmds.find("NAK") >= 0:
+					for cap in event.get_caps():
+						_caps[cap] = AVAILABLE
+					_requested -= event.get_cap_count()
+			if _requested == 0:
+				_state = Status.IDENT_SENT
+				_queue.append("CAP END\r\n")
 		Status.IDENT_SENT, Status.REJECTED:
-			# wait for MOTD/NICKTAKEN
-			if event.ordinal == IRC.Commands.RPL_ENDOFMOTD or event.ordinal == IRC.Commands.RPL_WELCOME:
+			# wait for WELCOME/MOTD (don't be picky)
+			if event.ordinal == IRC.Commands.RPL_WELCOME or\
+			   event.ordinal == IRC.Commands.RPL_MOTDSTART or\
+			   event.ordinal == IRC.Commands.RPL_MOTD or\
+			   event.ordinal == IRC.Commands.RPL_ENDOFMOTD:
 				_state = Status.REGISTERED
 				conn_established.emit()
 				print("Negotiating complete")
-			elif event.ordinal == IRC.Commands.ERR_NICKNAMEINUSE:
-				_nick += "_"
-				_queue.append("NICK %s" % _nick)
+
+
+func _noop_filter(caps: Dictionary) -> void:
+	pass
 
 
 func _handle_ctcp_request(event: IrcEvent) -> void:
-	var response := "NOTICE %s :\u0001" % [ _nick, event.source["nick"] ]
+	var content: PackedStringArray = []
 	for ctcp: PackedStringArray in event.ctcp:
 		match ctcp[0]:
 			"CLIENTINFO":
-				response += "CLIENTINFO ACTION DCC CLIENTINFO FINGER PING SOURCE TIME USERINFO VERSION\u0001"
+				content.append("CLIENTINFO ACTION DCC CLIENTINFO FINGER PING SOURCE TIME USERINFO VERSION")
 			"FINGER":
-				response += "FINGER gdIRC 0.1\u0001"
+				content.append("FINGER gdIRC 0.1")
 			"PING":
-				response += "%s\u0001" % " ".join(ctcp)
+				content.append(" ".join(ctcp))
 			"SOURCE":
-				response += "SOURCE https://github.com/AngryMeenky/gdirc\u0001"
+				content.append("SOURCE https://github.com/AngryMeenky/gdirc")
 			"TIME":
-				response += "TIME %s\u0001" % Time.get_datetime_string_from_system()
+				content.append("TIME %s" % Time.get_datetime_string_from_system())
 			"VERSION":
-				response += "FINGER gdIRC 0.1\u0001"
+				content.append("VERSION gdIRC 0.1")
 			"USERINFO":
-				response += "USERINFO %s (redacted)\u0001" % _nick
-	if not response.ends_with(":\u0001"):
-		_queue.append(response)
+				content.append("USERINFO %s (redacted)" % _nick)
+	if not content.is_empty():
+		_queue.append("NOTICE %s :\u0001%s\u0001" % [ event.source["nick"], "\u0001".join(content) ])
 
 
 func _handle_ctcp_response(event: IrcEvent) -> void:
