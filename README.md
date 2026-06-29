@@ -29,45 +29,44 @@ Simply copy the [addons/gdirc/](https://github.com/AngryMeenky/gdirc/tree/master
 
 
 func _ready():
-  client.nick = "nick"
-  client.user = "username"
-  client.debug = true
+	client.nick = "nick"
+	client.user = "username"
+	client.debug = true
 	client.conn_established.connect(_connected)
 	client.irc_event.connect(_on_event)
-  # You can still pass respectively a websocket url that will be used on html exports
-  client.connect_to_server("irc://irc.example.local:6667")
+	# You can still pass respectively a websocket url that will be used on html exports
+	client.connect_to_server("irc://irc.example.local:6667")
 
 
 func _connected():
-   client.join("#channel")
+	client.join("#channel")
    
    
 func _on_event(ev):
-   # The event (ev) object can contain the attributes: 'text', 'source, 'target'...
-   # depending of the type. It is guaranteed to always have the 'type' and 'source' attributes
+	# The event (ev) object can contain the attributes: 'text', 'source, 'target'...
+	# depending of the type. It is guaranteed to always have the 'type' and 'source' attributes
 	match ev.ordinal:
 		client.PRIVMSG:
-		 # Do something with ev.get_text() and ev.get_target() or ev.ctcp
+			# Do something with ev.get_text() and ev.get_target() or ev.ctcp
 			pass
 		IRC.Commands.PART:
-		 # Do something with ev.get_target()
+			# Do something with ev.get_target()
 			pass
 		IRC.Commands.JOIN:
-		 # Do something with ev.get_target()
+			# Do something with ev.get_target()
 			pass
 		IRC.Commands.NICK:
-		 # Do something with ev.get_arg(0)
+			# Do something with ev.get_arg(0)
 			pass
 		IRC.Commands.ERR_NICKNAMEINUSE:
-		 # Do something with ev.get_arg(0)
+			# Do something with ev.get_arg(0)
 			pass
 		IRC.Commands.TOPIC:
-		 # Do something with ev.get_text() and ev.get_target()
+			# Do something with ev.get_text() and ev.get_target()
 			pass
 		IRC.Commands.KICK:
-		 # Do something with ev.get_arg(0) and ev.get_target() and ev.get_source() might be also relevant on this case.
+			# Do something with ev.get_arg(0) and ev.get_target() and ev.get_source() might be also relevant on this case.
 			pass
-		 
 	  # And there is more....
 
 ```
@@ -90,16 +89,17 @@ func _on_event(ev):
 # TODO
 
 - [x] Separated irc backends that implement send, emit signal on message, basic text decoding
-   - [x] websocket backend
-   - [x] tcp backend
-   - [x] tcp ssl backend
+	- [x] websocket backend
+	- [x] tcp backend
+	- [x] tcp ssl backend
 
 - [x] irc client that accepts one of the backends 
 
 - [x] Irc protocol parsing/handling and commands
-   - [x] Actions (emote), other's join, other's part
-   - [x] topic, mode, other users nick change and mode change, user kicked, banned
-   - [ ] Implement more? https://datatracker.ietf.org/doc/html/rfc1459
+	- [x] Actions (emote), other's join, other's part
+	- [x] topic, mode, other users nick change and mode change, user kicked, banned
+	- [ ] Implement more? https://datatracker.ietf.org/doc/html/rfc1459
+	- [ ] Implement SASL for improved usser experience and security
 
 - [x] Better UI
 	- [x] Better RichTextLabel to display messages and unload old ones dynamically
