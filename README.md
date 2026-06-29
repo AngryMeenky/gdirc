@@ -99,7 +99,7 @@ func _on_event(ev):
 - [x] IRC client that accepts one of the backends
 	- [x] Emits a signal on every parsable IRC message, prints an error on unparasable IRC messages
 	- [x] Emits signal on completed registration with IRC server
-	- [X] Allows custom handling of capability negotiation via a provided [https://docs.godotengine.org/en/stable/classes/class_callable.html](Callable)
+	- [X] Allows custom handling of capability negotiation via a provided [Callable](https://docs.godotengine.org/en/stable/classes/class_callable.html)
 
 - [x] IRC protocol parsing/handling and commands
 	- [x] Actions (emote), other's join, other's part
