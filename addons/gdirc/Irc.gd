@@ -8,6 +8,7 @@ signal conn_established()
 signal conn_error(err: String)
 signal irc_event(event: IrcEvent)
 signal irc_established()
+signal upnp_completed(result: int)
 
 
 enum Status {
@@ -108,8 +109,12 @@ static var ADDR_REGEX := RegEx.create_from_string(
 		debug = val
 
 var _connected := false
+var _upnp := UPNP.new()
 var _client: IrcClient = null
+var _upnp_thread: Thread = null
 var _wrapper: BackendWrapper = BackendWrapper.new()
+var _local_ip := "127.0.0.1"
+var _public_ip := "127.0.0.1"
 
 
 func _init():
@@ -123,6 +128,7 @@ func _ready() -> void:
 	_client = IrcClient.new(nick, user, password, network)
 	_client.conn_established.connect(_on_established)
 	_client._debug = debug
+	initiate_upnp_scan()
 
 
 func _process(_delta):
@@ -143,6 +149,98 @@ func _process(_delta):
 		var event = _client.process(packet)
 		if event != null:
 			irc_event.emit(event)
+
+
+func _discovery_worker() -> void:
+	# attempt to determine at least some semi usable IPs
+	var addr := _get_non_loopback()
+	if _local_ip == "127.0.0.1":
+		_local_ip = addr
+
+	if _public_ip == "127.0.0.1":
+		_public_ip = addr
+
+	var result := _upnp.discover()
+	_discovery_complete.call_deferred(result)
+
+
+func _discovery_complete(result: int) -> void:
+	_upnp_thread.wait_to_finish()
+	_upnp_thread = null
+	if result == UPNP.UPNP_RESULT_SUCCESS:
+		var gateway := _upnp.get_gateway()
+		if gateway and gateway.is_valid_gateway():
+			_local_ip = gateway.igd_our_addr
+			_public_ip = gateway.query_external_address()
+	upnp_completed.emit(result)
+
+
+func _add_port_worker(port: int, proto: String) -> void:
+	var result := _upnp.add_port_mapping(port, port, "gdIRC", proto, 120)
+	_port_change_complete.call_deferred(result)
+
+
+func _remove_port_worker(port: int, proto: String) -> void:
+	var result := _upnp.delete_port_mapping(port, proto)
+	_port_change_complete.call_deferred(result)
+
+
+func _port_change_complete(result: int) -> void:
+	_upnp_thread.wait_to_finish()
+	_upnp_thread = null
+	upnp_completed.emit(result)
+
+
+func _get_non_loopback() -> String:
+	var prefix := RegEx.create_from_string("10\\.|192\\.168\\.") # ignore typical docker networks
+	for addr: String in IP.get_local_addresses():
+		var m := prefix.search(addr)
+		if m != null:
+			return m.subject
+
+	return "127.0.0.1" # complete failure fallback
+
+
+func _raw_ip_to_dcc_ip(addr: String) -> String:
+	var parts := addr.split(".", false)
+	if parts.size() == 4:
+		return str((int(parts[0]) << 24) | (int(parts[1]) << 16) | (int(parts[2]) << 8) | int(parts[3]))
+	return addr;
+
+
+func get_local_ip() -> String:
+	return _local_ip
+
+
+func get_public_ip() -> String:
+	return _public_ip
+
+
+func initiate_upnp_scan() -> bool:
+	if _upnp_thread == null:
+		_upnp_thread = Thread.new();
+		_upnp_thread.start(_discovery_worker)
+		return true
+
+	return false
+
+
+func add_upnp_mapping(port: int, proto := "UDP") -> bool:
+	if _upnp_thread == null:
+		_upnp_thread = Thread.new();
+		_upnp_thread.start(_add_port_worker.bind(port, proto))
+		return true
+
+	return false
+
+
+func remove_upnp_mapping(port: int, proto := "UDP") -> bool:
+	if _upnp_thread == null:
+		_upnp_thread = Thread.new();
+		_upnp_thread.start(_remove_port_worker.bind(port, proto))
+		return true
+
+	return false
 
 
 func set_capability_callback(callable: Callable) -> void:
@@ -314,7 +412,7 @@ func me(target: String, message: String) -> void:
 
 # send a DCC request
 func dcc(target: String, type: String, arg: String, host: String, port: int) -> void:
-	ctcp_request(target, "DCC %s %s %s %d" % [ type, arg, host, port ])
+	ctcp_request(target, "DCC %s %s %s %d" % [ type, arg, _raw_ip_to_dcc_ip(host), port ])
 
 
 func _on_error(err: String) -> void:
