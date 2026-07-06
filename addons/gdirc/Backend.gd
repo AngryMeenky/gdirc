@@ -10,7 +10,7 @@ signal conn_error(err: String)
 
 
 func poll() -> void:
-	print("StubWrapper.poll()")
+	pass
 
 
 func get_status() -> IRC.Status:
