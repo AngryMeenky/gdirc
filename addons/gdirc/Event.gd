@@ -276,6 +276,16 @@ func get_list() -> PackedStringArray:
 	return parsed.get(&"list", _EMPTY)
 
 
+func get_list_sise() -> int:
+	return parsed.get(&"list", _EMPTY).size()
+
+
+func get_list_item(idx: int) -> String:
+	var args: PackedStringArray = parsed.get(&"list", _EMPTY)
+	if args.size() > idx:
+		return args[idx]
+	return ""
+
 func get_cap_count() -> int:
 	return parsed.get(&"caps", _EMPTY).size()
 
