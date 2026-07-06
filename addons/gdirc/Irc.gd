@@ -324,6 +324,10 @@ func connect_to_server(url: String) -> Error:
 	return err
 
 
+func get_status() -> Status:
+	return _wrapper.get_status()
+
+
 # send a fully formed IRC message
 func send_raw(msg: String) -> void:
 	_client.queue_message(msg)
@@ -356,7 +360,7 @@ func part_channel(channel: String) -> void:
 
 # Quits the irc server
 func quit_server(message: String) -> void:
-	_client.queue_message("QUIT %s\r\n" % message)
+	_client.queue_message("QUIT :%s\r\n" % message)
 
 
 # Changes the mode for a specific channel
@@ -426,4 +430,6 @@ func _on_connect() -> void:
 
 
 func _on_established() -> void:
+	if _client._nick != nick:
+		nick = _client._nick
 	irc_established.emit()
