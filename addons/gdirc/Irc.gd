@@ -186,8 +186,6 @@ func _remove_port_worker(port: int, proto: String) -> void:
 
 
 func _port_change_complete(result: int) -> void:
-	_upnp_thread.wait_to_finish()
-	_upnp_thread = null
 	upnp_completed.emit(result)
 
 
@@ -253,15 +251,15 @@ func set_connection(conn) -> Error:
 	if conn is StreamPeerTCP:
 		_wrapper = BackendWrapper.TcpWrapper.new(conn)
 		_wrapper.debug = debug
-		_client.reset()
+		_client._init(nick, user, password, network)
 	elif conn is StreamPeerTLS:
 		_wrapper = BackendWrapper.TlsWrapper.new(conn)
 		_wrapper.debug = debug
-		_client.reset()
+		_client._init(nick, user, password, network)
 	elif conn is WebSocketPeer:
 		_wrapper = BackendWrapper.WebSocketWrapper.new(conn)
 		_wrapper.debug = debug
-		_client.reset()
+		_client._init(nick, user, password, network)
 	else:
 		push_error("Invalid connection type: ", conn.get_class())
 		return ERR_CANT_CREATE

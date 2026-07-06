@@ -73,7 +73,7 @@ var _caps := {}
 var _requested := 0
 var _state := Status.UNREGISTERED
 var _debug := false
-var _cap_filter: Callable
+var _cap_filter: Callable = _noop_filter
 var _wrapper
 
 
@@ -82,7 +82,6 @@ func _init(nick: String, user: String, password: String, network: String):
 	_user = user
 	_password = password
 	_network = network
-	_cap_filter = _noop_filter
 	reset()
 
 
