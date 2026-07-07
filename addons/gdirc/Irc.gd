@@ -23,6 +23,10 @@ enum Status {
 }
 
 
+static var Prefixes := {
+	"~": "Owner", "&": "Admin", "@": "Operator", "%": "HalfOper", "+": "Voiced"
+}
+
 enum Commands {
 	CAP     =  -1, AUTHENTICATE =  -2, PASS     =  -3, NICK    =  -4,
 	USER    =  -5, PING         =  -6, PONG     =  -7, OPER    =  -8,
@@ -413,8 +417,11 @@ func me(target: String, message: String) -> void:
 
 
 # send a DCC request
-func dcc(target: String, type: String, arg: String, host: String, port: int) -> void:
-	ctcp_request(target, "DCC %s %s %s %d" % [ type, arg, _raw_ip_to_dcc_ip(host), port ])
+func dcc(target: String, type: String, arg: String, host: String, port: int, bytes := 0) -> void:
+	if bytes == 0:
+		ctcp_request(target, "DCC %s %s %s %d" % [ type, arg, _raw_ip_to_dcc_ip(host), port ])
+	else:
+		ctcp_request(target, "DCC %s %s %s %d %d" % [ type, arg, _raw_ip_to_dcc_ip(host), port, bytes ])
 
 
 func _on_error(err: String) -> void:
