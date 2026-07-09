@@ -2,6 +2,15 @@ extends RefCounted
 class_name IrcDcc
 
 
+signal status_changed(status: State)
+signal received_content(type: StringName)
+
+
+const ACK  := &"ACK"
+const DATA := &"DATA"
+const CHAT := &"CHAT"
+
+
 enum State {
 	LISTENING,
 	CONNECTING,
@@ -20,8 +29,10 @@ var _data = null
 var _counts := PackedInt32Array()
 var _state := State.ERRORED
 var _handler := Callable()
+var _kind := ""
 var _address := ""
 var _port := 0
+var _out: bool
 
 
 func poll() -> Error:
@@ -32,16 +43,19 @@ func poll() -> Error:
 				_stream.big_endian = true
 				_server.stop()
 				_server = null
-				_state = State.SENDING
+				_state = State.SENDING if _out else State.RECEIVING
+				status_changed.emit(_state)
 
 		State.CONNECTING:
 			var status := _stream.get_status()
 			if status == StreamPeerTCP.STATUS_CONNECTED:
-				_state = State.SENDING
+				_state = State.SENDING if _out else State.RECEIVING
+				status_changed.emit(_state)
 			elif status == StreamPeerTCP.STATUS_ERROR:
 				_state = State.ERRORED
 				_stream.disconnect_from_host()
 				_stream = null
+				status_changed.emit(_state)
 
 		State.SENDING, State.RECEIVING, State.CHATTING:
 				return _handler.call() if _handler.is_valid() else ERR_METHOD_NOT_FOUND
@@ -57,6 +71,26 @@ func poll() -> Error:
 
 func get_status() -> State:
 	return _state
+
+
+func get_ip() -> String:
+	return _address
+
+
+func get_port() -> int:
+	return _port
+
+
+func get_file_size() -> int:
+	return _counts[0]
+
+
+func get_transferred_bytes() -> int:
+	return _counts[1]
+
+
+func get_acknowledged_bytes() -> int:
+	return _counts[2]
 
 
 func get_byte_buffer() -> PackedByteArray:
@@ -94,16 +128,19 @@ func terminate() -> void:
 			_server.stop()
 			_server = null
 			_state = State.TERMINATED
+			status_changed.emit(_state)
+
 
 		State.CONNECTING, State.SENDING, State.RECEIVING, State.CHATTING:
 			_stream.disconnect_from_host()
 			_stream = null
 			_state = State.TERMINATED
+			status_changed.emit(_state)
 
 
 # reverse: true->connect to addr:port, false->listen on addr:port
 static func serve_file(path: String, addr: String, port: int, reverse := false) -> IrcDcc:
-	var dcc := IrcDcc.new(addr, port)
+	var dcc := IrcDcc.new("FILE", addr, port, true)
 	var fp := FileAccess.open(path, FileAccess.READ)
 	if fp == null:
 		printerr("Unable to open %s for reading: %s" % [ path, error_string(FileAccess.get_open_error()) ])
@@ -127,7 +164,7 @@ static func serve_file(path: String, addr: String, port: int, reverse := false) 
 
 # reverse: true->connect to addr:port, false->listen on addr:port
 static func serve_buffer(bytes: PackedByteArray, addr: String, port: int, reverse := false) -> IrcDcc:
-	var dcc := IrcDcc.new(addr, port)
+	var dcc := IrcDcc.new("BYTES", addr, port, true)
 	dcc._data = bytes
 
 	dcc._initialize_comm(reverse)
@@ -144,7 +181,7 @@ static func serve_buffer(bytes: PackedByteArray, addr: String, port: int, revers
 
 
 static func receive_file(path: String, addr: String, port: int, expected := 0, reverse := false) -> IrcDcc:
-	var dcc := IrcDcc.new(addr, port)
+	var dcc := IrcDcc.new("FILE", addr, port, false)
 	var fp := FileAccess.open(path, FileAccess.WRITE)
 	if fp == null:
 		printerr("Unable to open %s for writing: %s" % [ path, error_string(FileAccess.get_open_error()) ])
@@ -164,7 +201,7 @@ static func receive_file(path: String, addr: String, port: int, expected := 0, r
 
 
 static func receive_buffer(addr: String, port: int, expected := 0, reverse := false) -> IrcDcc:
-	var dcc := IrcDcc.new(addr, port)
+	var dcc := IrcDcc.new("BYTES", addr, port, false)
 
 	dcc._initialize_comm(not reverse)
 
@@ -180,7 +217,7 @@ static func receive_buffer(addr: String, port: int, expected := 0, reverse := fa
 
 
 static func join_chat(addr: String, port: int, reverse := false) -> IrcDcc:
-	var dcc := IrcDcc.new(addr, port)
+	var dcc := IrcDcc.new("CHAT", addr, port, reverse)
 
 	dcc._initialize_comm(not reverse)
 
@@ -195,9 +232,11 @@ static func join_chat(addr: String, port: int, reverse := false) -> IrcDcc:
 	return dcc
 
 
-func _init(addr: String, port: int):
+func _init(kind: String, addr: String, port: int, sending: bool):
+	_kind = kind
 	_address = addr
 	_port = port
+	_out = sending
 
 
 func _initialize_comm(out: bool) -> Error:
@@ -232,6 +271,7 @@ func _serve_file_handler() -> Error:
 			_state = State.ERRORED
 			_stream = null
 			_data.close()
+			status_changed.emit(_state)
 			return ERR_CONNECTION_ERROR
 
 		var count := _counts[0]
@@ -241,26 +281,29 @@ func _serve_file_handler() -> Error:
 		while _stream.get_available_bytes() >= 4:
 			acked += _stream.get_32()
 
-		if acked >= count:
-			_stream.disconnect_from_host()
-			_state = State.COMPLETED
-			_stream = null
-			_data.close()
-			return ERR_FILE_EOF
-
-		if sent == acked:
-			var block := mini(8192, count - sent)
-			var chunk: PackedByteArray = _data.get_buffer(block)
-			if chunk.is_empty() or _stream.put_data(chunk) != OK:
+		if acked != _counts[2]:
+			if acked >= count:
 				_stream.disconnect_from_host()
-				_state = State.ERRORED
+				_state = State.COMPLETED
 				_stream = null
 				_data.close()
-				return ERR_CONNECTION_ERROR
-			sent += chunk.size()
+				status_changed.emit(_state)
+				return ERR_FILE_EOF
 
-		_counts[1] = sent
-		_counts[2] = acked
+			if sent == acked:
+				var block := mini(8192, count - sent)
+				var chunk: PackedByteArray = _data.get_buffer(block)
+				if chunk.is_empty() or _stream.put_data(chunk) != OK:
+					_stream.disconnect_from_host()
+					_state = State.ERRORED
+					_stream = null
+					_data.close()
+					return ERR_CONNECTION_ERROR
+				sent += chunk.size()
+
+			_counts[1] = sent
+			_counts[2] = acked
+			received_content.emit(ACK)
 
 		return OK
 	elif _state == State.COMPLETED:
@@ -275,6 +318,7 @@ func _serve_buffer_handler() -> Error:
 			_stream.disconnect_from_host()
 			_state = State.ERRORED
 			_stream = null
+			status_changed.emit(_state)
 			return ERR_CONNECTION_ERROR
 
 		var count := _counts[0]
@@ -284,22 +328,26 @@ func _serve_buffer_handler() -> Error:
 		while _stream.get_available_bytes() >= 4:
 			acked += _stream.get_32()
 
-		if acked >= count:
-			_stream.disconnect_from_host()
-			_state = State.COMPLETED
-			_stream = null
-			return ERR_FILE_EOF
-
-		if sent == acked:
-			var block := mini(8192, count - sent)
-			if _stream.put_data(_data.slice(acked, acked + block)) != OK:
+		if acked != _counts[2]:
+			if acked >= count:
 				_stream.disconnect_from_host()
-				_state = State.ERRORED
+				_state = State.COMPLETED
 				_stream = null
-				return ERR_CONNECTION_ERROR
+				status_changed.emit(_state)
+				return ERR_FILE_EOF
 
-		_counts[1] = sent
-		_counts[2] = acked
+			if sent == acked:
+				var block := mini(8192, count - sent)
+				if _stream.put_data(_data.slice(acked, acked + block)) != OK:
+					_stream.disconnect_from_host()
+					_state = State.ERRORED
+					status_changed.emit(_state)
+					_stream = null
+					return ERR_CONNECTION_ERROR
+
+			_counts[1] = sent
+			_counts[2] = acked
+			received_content.emit(ACK)
 
 		return OK
 	elif _state == State.COMPLETED:
@@ -315,6 +363,7 @@ func _receive_file_handler() -> Error:
 			_state = State.ERRORED
 			_stream = null
 			_data.close()
+			status_changed.emit(_state)
 			return ERR_CONNECTION_ERROR
 
 		var count := _counts[0]
@@ -328,6 +377,7 @@ func _receive_file_handler() -> Error:
 				_stream.disconnect_from_host()
 				_state = State.ERRORED
 				_stream = null
+				status_changed.emit(_state)
 				return ERR_CONNECTION_ERROR
 			_data.store_buffer(res[1])
 			received += res[1].size()
@@ -335,12 +385,14 @@ func _receive_file_handler() -> Error:
 			acked = received
 			_counts[1] = received
 			_counts[2] = acked
+			received_content.emit(DATA)
 
 			if count > 0 and acked >= count:
 				_stream.disconnect_from_host()
 				_state = State.COMPLETED
 				_stream = null
 				_data.close()
+				status_changed.emit(_state)
 				return ERR_FILE_EOF
 
 		return OK
@@ -356,6 +408,7 @@ func _receive_buffer_handler() -> Error:
 			_stream.disconnect_from_host()
 			_state = State.ERRORED
 			_stream = null
+			status_changed.emit(_state)
 			return ERR_CONNECTION_ERROR
 
 		var count := _counts[0]
@@ -369,6 +422,7 @@ func _receive_buffer_handler() -> Error:
 				_stream.disconnect_from_host()
 				_state = State.ERRORED
 				_stream = null
+				status_changed.emit(_state)
 				return ERR_CONNECTION_ERROR
 			_data.append_array(res[1])
 			received += res[1].size()
@@ -376,11 +430,13 @@ func _receive_buffer_handler() -> Error:
 			acked = received
 			_counts[1] = received
 			_counts[2] = acked
+			received_content.emit(DATA)
 
 			if count > 0 and acked >= count:
 				_stream.disconnect_from_host()
 				_state = State.COMPLETED
 				_stream = null
+				status_changed.emit(_state)
 				return ERR_FILE_EOF
 
 		return OK
@@ -395,6 +451,7 @@ func _chat_handler() -> Error:
 		if _stream.get_status() != StreamPeerTCP.STATUS_CONNECTED:
 			_stream.disconnect_from_host()
 			_state = State.ERRORED
+			status_changed.emit(_state)
 			_stream = null
 			return ERR_CONNECTION_ERROR
 
@@ -415,6 +472,7 @@ func _chat_handler() -> Error:
 				_stream.disconnect_from_host()
 				_state = State.ERRORED
 				_stream = null
+				status_changed.emit(_state)
 				return ERR_CONNECTION_ERROR
 			var bytes: PackedByteArray = res[1]
 			var buffer: PackedByteArray = _data[0]
@@ -456,5 +514,9 @@ func _chat_handler() -> Error:
 					buffer.append_array(slice)
 				else:
 					buffer.clear()
+				received_content.emit(CHAT)
 
 	return OK
+
+func _to_string() -> String:
+	return "DCC(%s): %s/%d" % [ _kind, _address, _port ]
