@@ -118,6 +118,7 @@ var _connected := false
 var _upnp := UPNP.new()
 var _client: IrcClient = null
 var _dccs := {}
+var _queued := {}
 var _upnp_thread: Thread = null
 var _wrapper: BackendWrapper = BackendWrapper.new()
 var _local_ip := "127.0.0.1"
@@ -198,6 +199,16 @@ func _remove_port_worker(port: int, proto: String) -> void:
 
 func _port_change_complete(result: int, port: int, proto: String, map: bool) -> void:
 	if map:
+		if _queued.has(port):
+			var arr: Array = _queued[port]
+			_queued.erase(port)
+			var conn: IrcDcc = arr[0].call(arr[3], arr[4], arr[5])
+			if conn.get_status() != IrcDcc.State.ERRORED:
+				var rec := [ conn, _on_dcc_status.bind(conn), _on_dcc_content.bind(conn), arr[1], arr[2] ]
+				_dccs[conn.to_string()] = rec
+				conn.status_changed.connect(rec[1])
+				conn.received_content.connect(rec[2])
+				dcc(nick, "SEND", arr[3], arr[4], arr[5], conn.get_file_size())
 		upnp_port_mapped.emit(result, port, proto)
 	else:
 		upnp_port_unmapped.emit(result, port, proto)
@@ -458,8 +469,9 @@ func serve_file(nick: String, file: String, path: String, addr := "", port := 0)
 		port = randi_range(20000, 40000)
 
 	if addr != get_local_ip() and addr == get_public_ip():
-		# TODO: map a port on the gateway
-		pass
+		add_upnp_mapping(port)
+		_queued[port] = [ IrcDcc.serve_file, nick, file, path, addr, port ]
+		return OK
 	else:
 		var conn := IrcDcc.serve_file(path, addr, port)
 		if conn.get_status() != IrcDcc.State.ERRORED:
@@ -481,8 +493,9 @@ func serve_buffer(nick: String, file: String, data: PackedByteArray, addr := "",
 		port = randi_range(20000, 40000)
 
 	if addr != get_local_ip() and addr == get_public_ip():
-		# TODO: map a port on the gateway
-		pass
+		add_upnp_mapping(port)
+		_queued[port] = [ IrcDcc.serve_buffer, nick, file, data, addr, port ]
+		return OK
 	else:
 		var conn := IrcDcc.serve_buffer(data, addr, port)
 		if conn.get_status() != IrcDcc.State.ERRORED:
@@ -502,11 +515,12 @@ func _on_dcc_status(status: IrcDcc.State, dcc: IrcDcc) -> void:
 
 func _on_dcc_content(type: StringName, dcc: IrcDcc) -> void:
 	# TODO: turn into a signal to announce updates
+	var arr: Array = _dccs[dcc.to_string()]
 	match type:
 		IrcDcc.ACK:
-			pass
+			print("ACK: %s -> %d/%d", arr[3], dcc.get_acknowledged_bytes(), dcc.get_file_size())
 		IrcDcc.DATA:
-			pass
+			print("DATA: %s -> %d/%d", arr[3], dcc.get_transferred_bytes(), dcc.get_file_size())
 		IrcDcc.CHAT:
 			pass
 
