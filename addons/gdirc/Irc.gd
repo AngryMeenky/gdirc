@@ -9,6 +9,8 @@ signal conn_error(err: String)
 signal irc_event(event: IrcEvent)
 signal irc_established()
 signal upnp_completed(result: int)
+signal upnp_port_mapped(result: int, port: int, proto: String)
+signal upnp_port_unmapped(result: int, port: int, proto: String)
 
 
 enum Status {
@@ -115,6 +117,7 @@ static var ADDR_REGEX := RegEx.create_from_string(
 var _connected := false
 var _upnp := UPNP.new()
 var _client: IrcClient = null
+var _dccs := {}
 var _upnp_thread: Thread = null
 var _wrapper: BackendWrapper = BackendWrapper.new()
 var _local_ip := "127.0.0.1"
@@ -154,6 +157,10 @@ func _process(_delta):
 		if event != null:
 			irc_event.emit(event)
 
+	# process any DCCs in progress
+	for arr in _dccs:
+		arr[0].poll()
+
 
 func _discovery_worker() -> void:
 	# attempt to determine at least some semi usable IPs
@@ -181,16 +188,19 @@ func _discovery_complete(result: int) -> void:
 
 func _add_port_worker(port: int, proto: String) -> void:
 	var result := _upnp.add_port_mapping(port, port, "gdIRC", proto, 120)
-	_port_change_complete.call_deferred(result)
+	_port_change_complete.call_deferred(result, port, proto, true)
 
 
 func _remove_port_worker(port: int, proto: String) -> void:
 	var result := _upnp.delete_port_mapping(port, proto)
-	_port_change_complete.call_deferred(result)
+	_port_change_complete.call_deferred(result, port, proto, false)
 
 
-func _port_change_complete(result: int) -> void:
-	upnp_completed.emit(result)
+func _port_change_complete(result: int, port: int, proto: String, map: bool) -> void:
+	if map:
+		upnp_port_mapped.emit(result, port, proto)
+	else:
+		upnp_port_unmapped.emit(result, port, proto)
 
 
 func _get_non_loopback() -> String:
@@ -210,6 +220,19 @@ func _raw_ip_to_dcc_ip(addr: String) -> String:
 	return addr;
 
 
+func _clean_up_dccs() -> void:
+	for arr: Array in _dccs.values():
+		var dcc: IrcDcc = arr[0]
+		var status: Callable = arr[1]
+		var update: Callable = arr[2]
+
+		dcc.status_changed.disconnect(status)
+		dcc.received_content.disconnect(update)
+		dcc.terminate()
+
+	_dccs.clear()
+
+
 func get_local_ip() -> String:
 	return _local_ip
 
@@ -227,7 +250,7 @@ func initiate_upnp_scan() -> bool:
 	return false
 
 
-func add_upnp_mapping(port: int, proto := "UDP") -> bool:
+func add_upnp_mapping(port: int, proto := "TCP") -> bool:
 	if _upnp_thread == null:
 		_upnp_thread = Thread.new();
 		_upnp_thread.start(_add_port_worker.bind(port, proto))
@@ -236,7 +259,7 @@ func add_upnp_mapping(port: int, proto := "UDP") -> bool:
 	return false
 
 
-func remove_upnp_mapping(port: int, proto := "UDP") -> bool:
+func remove_upnp_mapping(port: int, proto := "TCP") -> bool:
 	if _upnp_thread == null:
 		_upnp_thread = Thread.new();
 		_upnp_thread.start(_remove_port_worker.bind(port, proto))
@@ -256,14 +279,17 @@ func set_connection(conn) -> Error:
 		_wrapper = BackendWrapper.TcpWrapper.new(conn)
 		_wrapper.debug = debug
 		_client._init(nick, user, password, network)
+		_clean_up_dccs()
 	elif conn is StreamPeerTLS:
 		_wrapper = BackendWrapper.TlsWrapper.new(conn)
 		_wrapper.debug = debug
 		_client._init(nick, user, password, network)
+		_clean_up_dccs()
 	elif conn is WebSocketPeer:
 		_wrapper = BackendWrapper.WebSocketWrapper.new(conn)
 		_wrapper.debug = debug
 		_client._init(nick, user, password, network)
+		_clean_up_dccs()
 	else:
 		push_error("Invalid connection type: ", conn.get_class())
 		return ERR_CANT_CREATE
@@ -418,10 +444,71 @@ func me(target: String, message: String) -> void:
 
 # send a DCC request
 func dcc(target: String, type: String, arg: String, host: String, port: int, bytes := 0) -> void:
-	if bytes == 0:
+	if bytes <= 0:
 		ctcp_request(target, "DCC %s %s %s %d" % [ type, arg, _raw_ip_to_dcc_ip(host), port ])
 	else:
 		ctcp_request(target, "DCC %s %s %s %d %d" % [ type, arg, _raw_ip_to_dcc_ip(host), port, bytes ])
+
+
+func serve_file(nick: String, file: String, path: String, addr := "", port := 0) -> Error:
+	if addr == "":
+		addr = get_public_ip()
+
+	if port == 0:
+		port = randi_range(20000, 40000)
+
+	if addr != get_local_ip() and addr == get_public_ip():
+		# TODO: map a port on the gateway
+		pass
+	else:
+		var conn := IrcDcc.serve_file(path, addr, port)
+		if conn.get_status() != IrcDcc.State.ERRORED:
+			var arr := [ conn, _on_dcc_status.bind(conn), _on_dcc_content.bind(conn), nick, file ]
+			_dccs[conn.to_string()] = arr
+			conn.status_changed.connect(arr[1])
+			conn.received_content.connect(arr[2])
+			dcc(nick, "SEND", file, addr, port, conn.get_file_size())
+			return OK
+
+	return ERR_CONNECTION_ERROR
+
+
+func serve_buffer(nick: String, file: String, data: PackedByteArray, addr := "", port := 0) -> Error:
+	if addr == "":
+		addr = get_public_ip()
+
+	if port == 0:
+		port = randi_range(20000, 40000)
+
+	if addr != get_local_ip() and addr == get_public_ip():
+		# TODO: map a port on the gateway
+		pass
+	else:
+		var conn := IrcDcc.serve_buffer(data, addr, port)
+		if conn.get_status() != IrcDcc.State.ERRORED:
+			var arr := [ conn, _on_dcc_status.bind(conn), _on_dcc_content.bind(conn), nick, file ]
+			_dccs[conn.to_string()] = arr
+			conn.status_changed.connect(arr[1])
+			conn.received_content.connect(arr[2])
+			dcc(nick, "SEND", file, addr, port, conn.get_file_size())
+			return OK
+
+	return ERR_CONNECTION_ERROR
+
+
+func _on_dcc_status(status: IrcDcc.State, dcc: IrcDcc) -> void:
+	print(dcc.to_string(), " -> ", status);
+
+
+func _on_dcc_content(type: StringName, dcc: IrcDcc) -> void:
+	# TODO: turn into a signal to announce updates
+	match type:
+		IrcDcc.ACK:
+			pass
+		IrcDcc.DATA:
+			pass
+		IrcDcc.CHAT:
+			pass
 
 
 func _on_error(err: String) -> void:
